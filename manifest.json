@@ -1,0 +1,25 @@
+{
+  "manifest_version": 3,
+  "name": "Ui-Addon",
+  "version": "3.0",
+  "description": "Enhanced UI-Addon",
+  "permissions": [
+    "activeTab",
+    "storage"
+  ],
+  "host_permissions": [
+    "https://demonicscans.org/*"
+  ],
+  "content_scripts": [
+    {
+      "matches": ["https://demonicscans.org/*"],
+      "js": ["content.js"],
+      "run_at": "document_end"
+    }
+  ],
+  "icons": {
+    "16": "icon16.png",
+    "48": "icon48.png",
+    "128": "icon128.png"
+  }
+}
