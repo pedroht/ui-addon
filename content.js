@@ -1,0 +1,3724 @@
+(function() {
+  'use strict';
+
+  // No more global function placeholders needed - all buttons use programmatic listeners
+
+  // Global variables - must be defined before usage
+  var alarmInterval = null;
+  var monsterFiltersSettings = {"nameFilter":"","hideImg":false, "battleLimitAlarm":false, "monsterTypeFilter":[], "hpFilter":"", "playerCountFilter":"", "waveFilter":""}
+
+  // Enhanced settings management
+  var extensionSettings = {
+    sidebarColor: '#1e1e2e',
+    backgroundColor: '#000000',
+    statAllocationCollapsed: true,
+    statsExpanded: false,
+    petsExpanded: false,
+    blacksmithExpanded: false,
+    continueBattlesExpanded: true,
+    lootExpanded: true,
+    merchantExpanded: false,
+    inventoryExpanded: false,
+    pinnedMerchantItems: [],
+    pinnedInventoryItems: []
+  };
+
+  // Page-specific functionality mapping
+  const extensionPageHandlers = {
+    '/active_wave.php': initWaveMods,
+    '/game_dash.php': initDashboardTools,
+    '/battle.php': initBattleMods,
+    '/chat.php': initChatMods,
+    '/inventory.php': initInventoryMods,
+    '/pets.php': initPetMods,
+    '/stats.php': initStatMods,
+    '/pvp.php': initPvPMods,
+    '/blacksmith.php': initBlacksmithMods,
+    '/merchant.php': initMerchantMods,
+    '/orc_cull_event.php': initEventMods,
+  };
+
+  // Automatic retrieval of userId from cookie
+  function getCookieExtension(name) {
+    const value = `; ${document.cookie}`;
+    const parts = value.split(`; ${name}=`);
+    if (parts.length === 2) return parts.pop().split(';').shift();
+  }
+
+  const userId = getCookieExtension('demon');
+  if(!userId){
+    console.log('Not logged in')
+  }
+
+  function initDraggableFalse(){
+    document.querySelectorAll('a').forEach(x => x.draggable = false);
+    document.querySelectorAll('button').forEach(x => x.draggable = false);
+  }
+
+  // Settings management
+  function loadSettings() {
+    const saved = localStorage.getItem('demonGameExtensionSettings');
+    if (saved) {
+      extensionSettings = { ...extensionSettings, ...JSON.parse(saved) };
+    }
+    applySettings();
+  }
+
+  function saveSettings() {
+    localStorage.setItem('demonGameExtensionSettings', JSON.stringify(extensionSettings));
+  }
+
+  function applySettings() {
+    const sidebar = document.getElementById('game-sidebar');
+    if (sidebar) {
+      sidebar.style.background = extensionSettings.sidebarColor;
+    }
+    document.body.style.backgroundColor = extensionSettings.backgroundColor;
+  }
+
+  // Function to update sidebar stats
+  function updateSidebarStats(userStats) {
+    // Update stats in the menu item
+    const sidebarAttack = document.getElementById('sidebar-attack');
+    const sidebarDefense = document.getElementById('sidebar-defense');
+    const sidebarStamina = document.getElementById('sidebar-stamina');
+    const sidebarPoints = document.getElementById('sidebar-points');
+
+    // Allocation section elements
+    const sidebarAttackAlloc = document.getElementById('sidebar-attack-alloc');
+    const sidebarDefenseAlloc = document.getElementById('sidebar-defense-alloc');
+    const sidebarStaminaAlloc = document.getElementById('sidebar-stamina-alloc');
+    const sidebarPointsAlloc = document.getElementById('sidebar-points-alloc');
+
+    // Update menu item stats
+    if (sidebarAttack) sidebarAttack.textContent = userStats.ATTACK;
+    if (sidebarDefense) sidebarDefense.textContent = userStats.DEFENSE;
+    if (sidebarStamina) sidebarStamina.textContent = userStats.STAMINA;
+    if (sidebarPoints) sidebarPoints.textContent = userStats.STAT_POINTS;
+
+    // Update allocation section
+    if (sidebarAttackAlloc) sidebarAttackAlloc.textContent = userStats.ATTACK;
+    if (sidebarDefenseAlloc) sidebarDefenseAlloc.textContent = userStats.DEFENSE;
+    if (sidebarStaminaAlloc) sidebarStaminaAlloc.textContent = userStats.STAMINA;
+    if (sidebarPointsAlloc) sidebarPointsAlloc.textContent = userStats.STAT_POINTS;
+  }
+
+  // Function to fetch current stats and update sidebar
+  async function fetchAndUpdateSidebarStats() {
+    try {
+      // Try to get stats from topbar first, then page elements, then make AJAX call
+      let attack = '-', defense = '-', stamina = '-', points = '-';
+
+      // Method 1: Try stats page elements (v-attack, etc.)
+      attack = document.getElementById('v-attack')?.textContent || 
+              document.querySelector('[data-stat="attack"]')?.textContent;
+      defense = document.getElementById('v-defense')?.textContent || 
+               document.querySelector('[data-stat="defense"]')?.textContent;
+      stamina = document.getElementById('v-stamina')?.textContent || 
+               document.querySelector('[data-stat="stamina"]')?.textContent;
+      points = document.getElementById('v-points')?.textContent || 
+              document.querySelector('[data-stat="points"]')?.textContent;
+
+      // Method 2: Try topbar stamina (but we'll need AJAX for attack/defense/points)
+      if (!stamina || stamina === '-') {
+        const staminaSpan = document.getElementById('stamina_span');
+        if (staminaSpan) {
+          const staminaText = staminaSpan.textContent;
+          const staminaMatch = staminaText.match(/(\d+)/);
+          if (staminaMatch) {
+            stamina = staminaMatch[1];
+          }
+        }
+      }
+
+      // Method 3: If we don't have attack/defense/points, try AJAX call with different approaches
+      if ((!attack || attack === '-') || (!defense || defense === '-') || (!points || points === '-')) {
+        try {
+          // Try the allocate action first (it returns current stats)
+          let response = await fetch('stats_ajax.php', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+            body: 'action=get_stats'
+          });
+          
+          if (!response.ok) {
+            // Try alternative approach - allocate 0 points to get current stats
+            response = await fetch('stats_ajax.php', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+              body: 'action=allocate&stat=attack&amount=0'
+            });
+          }
+          
+          if (response.ok) {
+            const text = await response.text();
+            console.log('Stats response:', text); // Debug log
+            
+            try {
+              const data = JSON.parse(text);
+              if (data && data.user) {
+                attack = data.user.ATTACK || data.user.attack || attack || '-';
+                defense = data.user.DEFENSE || data.user.defense || defense || '-';
+                stamina = data.user.STAMINA || data.user.MAX_STAMINA || data.user.stamina || stamina || '-';
+                points = data.user.STAT_POINTS || data.user.stat_points || points || '-';
+                console.log('Parsed stats:', { attack, defense, stamina, points });
+              }
+            } catch (parseError) {
+              console.log('JSON parse error:', parseError, 'Response was:', text);
+            }
+          }
+        } catch (ajaxError) {
+          console.log('AJAX stats fetch failed:', ajaxError);
+        }
+      }
+
+      updateSidebarStats({
+        ATTACK: attack || '-',
+        DEFENSE: defense || '-',
+        STAMINA: stamina || '-',
+        STAT_POINTS: points || '-'
+      });
+    } catch (error) {
+      console.log('Could not fetch stats:', error);
+      updateSidebarStats({
+        ATTACK: '-',
+        DEFENSE: '-',
+        STAMINA: '-',
+        STAT_POINTS: '-'
+      });
+    }
+  }
+
+  function initSideBar(){
+    const noContainerPage = !document.querySelector('.container') && !document.querySelector('.wrap');
+    const mainWrapper = document.createElement('div');
+    mainWrapper.className = 'main-wrapper';
+
+    const sidebar = document.createElement('aside');
+    sidebar.id = 'game-sidebar';
+    sidebar.innerHTML = `
+      <div class="sidebar-header">
+        <a href="game_dash.php" style="text-decoration:none;"><h2>Game Menu</h2></a>
+      </div>
+
+      <ul class="sidebar-menu">
+        <li><a href="pvp.php"><img src="/images/pvp/season_1/compressed_menu_pvp_season_1.webp" alt="PvP Arena"> PvP Arena</a></li>
+        <li><a href="orc_cull_event.php"><img src="/images/events/orc_cull/banner.webp" alt="Goblin Feast"> 🪓 ⚔️ War Drums of GRAKTHAR</a></li>
+        <li><a href="active_wave.php?event=2&wave=6" draggable="false"><img src="/images/events/orc_cull/banner.webp" alt="War Drums of GRAKTHAR"> Event Battlefield</a></li>
+        <li><a href="active_wave.php?gate=3&wave=3"><img src="images/gates/gate_688e438aba7f24.99262397.webp" alt="Gate"> Gate Grakthar</a></li>
+        <li><a href="inventory.php"><img src="images/menu/compressed_chest.webp" alt="Inventory"> Inventory & Equipment</a></li>
+        <li>
+          <div class="sidebar-menu-expandable">
+            <a href="pets.php"><img src="images/menu/compressed_eggs_menu.webp" alt="Pets"> Pets & Eggs</a>
+            <button class="expand-btn" id="pets-expand-btn">+</button>
+          </div>
+          <div id="pets-expanded" class="sidebar-submenu collapsed">
+            <div class="coming-soon-text">🚧 Working on it / Coming Soon</div>
+          </div>
+        </li>
+        <li>
+          <div class="sidebar-menu-expandable">
+            <a href="stats.php" draggable="false">
+              <img src="images/menu/compressed_stats_menu.webp" alt="Stats"> 
+              <span id="stats-menu-text">Stats ⚔️<span id="sidebar-attack">-</span> 🛡️<span id="sidebar-defense">-</span> ⚡<span id="sidebar-stamina">-</span> 🔵<span id="sidebar-points">-</span></span>
+            </a>
+            <button class="expand-btn" id="stats-expand-btn" draggable="false">${extensionSettings.statsExpanded ? '–' : '+'}</button>
+          </div>
+          <div id="stats-expanded" class="sidebar-submenu ${extensionSettings.statsExpanded ? '' : 'collapsed'}">
+            <div class="stats-allocation-section">
+              <div class="upgrade-section">
+                <div class="stat-upgrade-row" data-stat="attack">
+                  <div class="stat-info">
+                    <span>⚔️ Attack:</span>
+                    <span id="sidebar-attack-alloc">-</span>
+                  </div>
+                  <div class="upgrade-controls">
+                    <button class="upgrade-btn" draggable="false">+1</button>
+                    <button class="upgrade-btn" draggable="false">+5</button>
+                  </div>
+                </div>
+                <div class="stat-upgrade-row" data-stat="defense">
+                  <div class="stat-info">
+                    <span>🛡️ Defense:</span>
+                    <span id="sidebar-defense-alloc">-</span>
+                  </div>
+                  <div class="upgrade-controls">
+                    <button class="upgrade-btn" draggable="false">+1</button>
+                    <button class="upgrade-btn" draggable="false">+5</button>
+                  </div>
+                </div>
+                <div class="stat-upgrade-row" data-stat="stamina">
+                  <div class="stat-info">
+                    <span>⚡ Stamina:</span>
+                    <span id="sidebar-stamina-alloc">-</span>
+                  </div>
+                  <div class="upgrade-controls">
+                    <button class="upgrade-btn" draggable="false">+1</button>
+                    <button class="upgrade-btn" draggable="false">+5</button>
+                  </div>
+                </div>
+                <div class="upgrade-note">Points Available: <span id="sidebar-points-alloc">-</span></div>
+              </div>
+            </div>
+          </div>
+        </li>
+        <li>
+          <div class="sidebar-menu-expandable">
+            <a href="blacksmith.php"><img src="images/menu/compressed_crafting.webp" alt="Blacksmith"> Blacksmith</a>
+            <button class="expand-btn" id="blacksmith-expand-btn">+</button>
+          </div>
+          <div id="blacksmith-expanded" class="sidebar-submenu collapsed">
+            <div class="coming-soon-text">🚧 Working on it / Coming Soon</div>
+          </div>
+        </li>
+        <li>
+          <div class="sidebar-menu-expandable">
+            <a href="merchant.php"><img src="images/menu/compressed_merchant.webp" alt="Merchant"> Merchant</a>
+            <button class="expand-btn" id="merchant-expand-btn">${extensionSettings.merchantExpanded ? '–' : '+'}</button>
+          </div>
+          <div id="merchant-expanded" class="sidebar-submenu ${extensionSettings.merchantExpanded ? '' : 'collapsed'}">
+            <div class="coming-soon-text">Visit merchant page to pin items for quick access</div>
+          </div>
+        </li>
+        <li>
+          <div class="sidebar-menu-expandable">
+            <a href="inventory.php"><img src="images/menu/compressed_chest.webp" alt="Inventory"> Inventory Quick Access</a>
+            <button class="expand-btn" id="inventory-expand-btn">${extensionSettings.inventoryExpanded ? '–' : '+'}</button>
+          </div>
+          <div id="inventory-expanded" class="sidebar-submenu ${extensionSettings.inventoryExpanded ? '' : 'collapsed'}">
+            <div class="coming-soon-text">Visit inventory page to pin items for quick access</div>
+          </div>
+        </li>
+        <li><a href="achievements.php"><img src="images/menu/compressed_achievments.webp" alt="Achievements"> Achievements</a></li>
+        <li><a href="collections.php"><img src="images/menu/compressed_collections.webp" alt="Collections"> Collections</a></li>
+        <li><a href="guide.php"><img src="images/menu/compressed_guide.webp" alt="Guide"> How To Play</a></li>
+        <li><a href="weekly.php"><img src="images/menu/weekly_leaderboard.webp" alt="Leaderboard"> Weekly Leaderboard</a></li>
+        <li><a href="chat.php"><img src="images/menu/compressed_chat.webp" alt="Chat"> Global Chat</a></li>
+        <li><a href="patches.php"><img src="images/menu/compressed_patches.webp" alt="PatchNotes"> Patch Notes</a></li>
+        <li><a href="index.php"><img src="images/menu/compressed_manga.webp" alt="Manga"> Manga-Manhwa-Manhua</a></li>
+        <li><a href="#" id="settings-link"><img src="images/menu/compressed_stats_menu.webp" alt="Settings"> ⚙️ Settings</a></li>
+      </ul>
+    `;
+
+    const contentArea = document.createElement('div');
+    contentArea.className = 'content-area';
+    if(noContainerPage){
+      const topbar = document.querySelector('.game-topbar');
+      const allElements = Array.from(document.body.children);
+      const topbarIndex = allElements.indexOf(topbar);
+
+      for (let i = topbarIndex + 1; i < allElements.length; i++) {
+        if (!allElements[i].classList.contains('main-wrapper') &&
+            !allElements[i].id !== 'sidebarToggle') {
+          contentArea.appendChild(allElements[i]);
+        }
+      }
+    } else {
+      const existingContainer = document.querySelector('.container') || document.querySelector('.wrap');
+      if (existingContainer) {
+        contentArea.appendChild(existingContainer);
+      }
+    }
+
+    mainWrapper.appendChild(sidebar);
+    mainWrapper.appendChild(contentArea);
+    document.body.appendChild(mainWrapper);
+
+    document.body.style.paddingTop = "55px";
+    document.body.style.paddingLeft = "0px";
+    document.body.style.margin = "0px";
+
+    const style = document.createElement('style');
+    style.textContent = `
+      .main-wrapper {
+        display: flex;
+        min-height: calc(100vh - 74px);
+      }
+
+      #game-sidebar {
+        width: 250px;
+        background: ${extensionSettings.sidebarColor};
+        border-right: 1px solid rgba(255, 255, 255, 0.06);
+        flex-shrink: 0;
+        padding: 15px 0;
+        overflow-y: auto;
+        position: fixed;
+        height: calc(100vh - 74px);
+      }
+
+      .sidebar-header {
+        padding: 0 20px 15px;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+        margin-bottom: 15px;
+      }
+
+      .sidebar-header h2 {
+        color: #FFD369;
+        margin: 0;
+        font-size: 1.4rem;
+      }
+
+      .sidebar-section {
+        margin: 0 20px 20px 20px;
+        background: rgba(255, 255, 255, 0.05);
+        border-radius: 8px;
+        overflow: hidden;
+      }
+
+      .stats-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 12px 15px;
+        cursor: pointer;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+      }
+
+      .stats-header:hover {
+        background: rgba(255, 255, 255, 0.05);
+      }
+
+      .stats-basic {
+        flex: 1;
+      }
+
+      .stats-title {
+        display: block;
+        color: #FFD369;
+        font-weight: bold;
+        margin-bottom: 8px;
+        font-size: 14px;
+      }
+
+      .stats-inline {
+        display: flex;
+        gap: 10px;
+        font-size: 10px; /* Stats text size */
+        color: #e0e0e0;
+      }
+
+      .stats-inline .points {
+        color: #74c0fc;
+        font-weight: bold;
+      }
+
+      .expand-btn {
+        background: none;
+        border: 1px solid rgba(255, 255, 255, 0.2);
+        color: #e0e0e0;
+        padding: 4px 8px;
+        border-radius: 4px;
+        cursor: pointer;
+        font-size: 12px;
+        min-width: 24px;
+      }
+
+      .expand-btn:hover {
+        background: rgba(255, 255, 255, 0.1);
+      }
+
+      .stats-expanded {
+        padding: 15px;
+        background: rgba(0, 0, 0, 0.2);
+      }
+
+      .stats-expanded.collapsed {
+        display: none;
+      }
+
+      .upgrade-section {
+        color: #e0e0e0;
+      }
+
+      .stat-upgrade-row {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 12px;
+        padding: 8px;
+        background: rgba(255, 255, 255, 0.05);
+        border-radius: 6px;
+      }
+
+      .stat-info {
+        display: flex;
+        justify-content: space-between;
+        min-width: 120px;
+      }
+
+      .upgrade-controls {
+        display: flex;
+        gap: 6px;
+      }
+
+      .upgrade-btn {
+        background: #a6e3a1;
+        color: #1e1e2e;
+        border: none;
+        padding: 4px 8px;
+        border-radius: 4px;
+        cursor: pointer;
+        font-size: 11px;
+        font-weight: bold;
+      }
+
+      .upgrade-btn:hover {
+        background: #94d3a2;
+      }
+
+      .upgrade-btn:disabled {
+        background: #6c7086;
+        cursor: not-allowed;
+      }
+
+      .upgrade-note {
+        font-size: 11px;
+        color: #a6adc8;
+        text-align: center;
+        margin-top: 10px;
+        font-style: italic;
+      }
+
+      .sidebar-menu {
+        list-style: none;
+        padding: 0;
+        margin: 0;
+      }
+
+      .sidebar-menu li:last-child {
+        border-bottom: none;
+      }
+
+      .sidebar-menu a {
+        display: flex;
+        align-items: center;
+        padding: 12px 20px;
+        color: #e0e0e0;
+        text-decoration: none;
+        transition: all 0.2s ease;
+        font-size: 14px; /* You can change this value */
+      }
+
+      .sidebar-menu a:hover {
+        background-color: #252525;
+        color: #FFD369;
+      }
+
+      .sidebar-menu img {
+        width: 24px;
+        height: 24px;
+        margin-right: 12px;
+        object-fit: cover;
+        border-radius: 4px;
+      }
+
+      .sidebar-menu-expandable {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding-right: 20px;
+      }
+
+      .sidebar-menu-expandable a {
+        flex: 1;
+        margin: 0;
+        padding: 12px 20px;
+      }
+
+      .sidebar-menu-expandable .expand-btn {
+        margin-left: 10px;
+      }
+
+      .sidebar-submenu {
+        background: rgba(0, 0, 0, 0.3);
+        padding: 15px 20px;
+        margin: 0;
+      }
+
+      .sidebar-submenu.collapsed {
+        display: none;
+      }
+
+      .coming-soon-text {
+        color: #f38ba8;
+        font-size: 12px;
+        text-align: center;
+        font-style: italic;
+      }
+
+      .content-area {
+        flex: 1;
+        padding: 20px;
+        margin-left: 250px;
+      }
+
+      .settings-modal {
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background: rgba(0, 0, 0, 0.8);
+        z-index: 10000;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+
+      .settings-content {
+        background: #1e1e2e;
+        border: 2px solid #cba6f7;
+        border-radius: 15px;
+        padding: 30px;
+        max-width: 500px;
+        width: 90%;
+        color: #cdd6f4;
+      }
+
+      .settings-section {
+        margin-bottom: 25px;
+      }
+
+      .settings-section h3 {
+        color: #f38ba8;
+        margin-bottom: 15px;
+        border-bottom: 1px solid #585b70;
+        padding-bottom: 8px;
+      }
+
+      .color-palette {
+        display: grid;
+        grid-template-columns: repeat(6, 1fr);
+        gap: 10px;
+        margin-top: 10px;
+      }
+
+      .color-option {
+        width: 40px;
+        height: 40px;
+        border-radius: 8px;
+        border: 2px solid transparent;
+        cursor: pointer;
+        transition: all 0.2s ease;
+      }
+
+      .color-option:hover {
+        transform: scale(1.1);
+      }
+
+      .color-option.selected {
+        border-color: #cba6f7;
+        box-shadow: 0 0 10px rgba(203, 166, 247, 0.5);
+      }
+
+      .settings-button {
+        background: #cba6f7;
+        color: #1e1e2e;
+        border: none;
+        padding: 10px 20px;
+        border-radius: 8px;
+        cursor: pointer;
+        margin-right: 10px;
+        margin-top: 10px;
+      }
+
+      .settings-button:hover {
+        background: #a281d4;
+      }
+
+      .sidebar-quick-access {
+        max-height: 300px;
+        overflow-y: auto;
+      }
+
+      .quick-access-empty {
+        color: #888;
+        font-size: 12px;
+        text-align: center;
+        padding: 10px;
+        font-style: italic;
+      }
+
+      .quick-access-item {
+        background: rgba(255, 255, 255, 0.05);
+        border-radius: 6px;
+        padding: 8px;
+        margin-bottom: 8px;
+      }
+
+      .qa-item-header {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        margin-bottom: 6px;
+      }
+
+      .qa-item-info {
+        flex: 1;
+        min-width: 0;
+      }
+
+      .qa-item-name {
+        font-size: 11px;
+        font-weight: bold;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+
+      .qa-item-price, .qa-item-stats {
+        font-size: 10px;
+        color: #888;
+      }
+
+      .qa-remove-btn {
+        background: #f38ba8;
+        color: white;
+        border: none;
+        border-radius: 50%;
+        width: 20px;
+        height: 20px;
+        cursor: pointer;
+        font-size: 12px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+
+      .qa-item-actions {
+        display: flex;
+        gap: 4px;
+      }
+
+      .qa-buy-btn, .qa-use-btn, .qa-equip-btn {
+        background: #a6e3a1;
+        color: #1e1e2e;
+        border: none;
+        padding: 4px 8px;
+        border-radius: 4px;
+        cursor: pointer;
+        font-size: 10px;
+        font-weight: bold;
+      }
+
+      .qa-buy-btn:hover, .qa-use-btn:hover, .qa-equip-btn:hover {
+        background: #94d3a2;
+      }
+
+      .qa-buy-btn:disabled {
+        background: #6c7086;
+        cursor: not-allowed;
+      }
+
+      .qa-use-btn {
+        background: #74c0fc;
+      }
+
+      .qa-use-btn:hover {
+        background: #5aa3e0;
+      }
+
+      .qa-equip-btn {
+        background: #f9e2af;
+      }
+
+      .qa-equip-btn:hover {
+        background: #e6d196;
+      }
+
+      /* Stats menu item text sizing */
+      #stats-menu-text {
+        font-size: 13px; /* Change this to make stats text bigger/smaller */
+      }
+
+      #stats-menu-text span {
+        font-weight: bold;
+        margin: 0 2px;
+      }
+
+      /* Event table styling for side-by-side display */
+      .event-table {
+        table-layout: auto;
+        width: 100%;
+        border-collapse: collapse;
+        background: rgba(30, 30, 46, 0.8);
+        border-radius: 8px;
+        overflow: hidden;
+        margin-bottom: 10px;
+      }
+
+      .event-table th,
+      .event-table td {
+        padding: 1px 5px;
+        text-align: left;
+        border-bottom: 1px solid rgba(88, 91, 112, 0.3);
+      }
+
+      .event-table th {
+        background: rgba(203, 166, 247, 0.2);
+        color: #cba6f7;
+        font-weight: bold;
+      }
+
+      .event-table tr:hover {
+        background: rgba(255, 255, 255, 0.05);
+      }
+
+      /* Shrink the Player column to fit content only */
+      .event-table td:nth-child(2) {
+        width: 1%;
+        white-space: nowrap;
+      }
+
+      /* Tighten damage column spacing */
+      .event-table td.right {
+        padding-left: 5px;
+        text-align: right;
+      }
+    `;
+    document.head.appendChild(style);
+
+    initSidebarExpandables();
+    initSettingsModal();
+    fetchAndUpdateSidebarStats();
+    
+    // Refresh stats every 30 seconds
+    setInterval(fetchAndUpdateSidebarStats, 30000);
+  }
+
+  function initSidebarExpandables() {
+    const statsExpandBtn = document.getElementById('stats-expand-btn');
+    const statsExpanded = document.getElementById('stats-expanded');
+
+    if (statsExpandBtn && statsExpanded) {
+      statsExpandBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const isCollapsed = statsExpanded.classList.contains('collapsed');
+
+        if (isCollapsed) {
+          statsExpanded.classList.remove('collapsed');
+          statsExpandBtn.textContent = '–';
+          extensionSettings.statsExpanded = true;
+        } else {
+          statsExpanded.classList.add('collapsed');
+          statsExpandBtn.textContent = '+';
+          extensionSettings.statsExpanded = false;
+        }
+
+        saveSettings();
+      });
+
+      if (extensionSettings.statsExpanded) {
+        statsExpanded.classList.remove('collapsed');
+        statsExpandBtn.textContent = '–';
+      } else {
+        statsExpanded.classList.add('collapsed');
+        statsExpandBtn.textContent = '+';
+      }
+    }
+
+    // Add programmatic event listeners for stat upgrade buttons
+    const upgradeControls = document.querySelectorAll('.upgrade-controls');
+    upgradeControls.forEach(controls => {
+      const plus1Btn = controls.querySelector('button:first-child');
+      const plus5Btn = controls.querySelector('button:last-child');
+      
+      if (plus1Btn) {
+        plus1Btn.addEventListener('click', () => {
+          const statRow = controls.closest('.stat-upgrade-row');
+          const stat = statRow?.dataset.stat || 'attack';
+          sidebarAlloc(stat, 1);
+        });
+      }
+      
+      if (plus5Btn) {
+        plus5Btn.addEventListener('click', () => {
+          const statRow = controls.closest('.stat-upgrade-row');
+          const stat = statRow?.dataset.stat || 'attack';
+          sidebarAlloc(stat, 5);
+        });
+      }
+    });
+
+    const petsExpandBtn = document.getElementById('pets-expand-btn');
+    const petsExpanded = document.getElementById('pets-expanded');
+
+    if (petsExpandBtn && petsExpanded) {
+      petsExpandBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const isCollapsed = petsExpanded.classList.contains('collapsed');
+
+        if (isCollapsed) {
+          petsExpanded.classList.remove('collapsed');
+          petsExpandBtn.textContent = '–';
+          extensionSettings.petsExpanded = true;
+        } else {
+          petsExpanded.classList.add('collapsed');
+          petsExpandBtn.textContent = '+';
+          extensionSettings.petsExpanded = false;
+        }
+
+        saveSettings();
+      });
+
+      if (extensionSettings.petsExpanded) {
+        petsExpanded.classList.remove('collapsed');
+        petsExpandBtn.textContent = '–';
+      }
+    }
+
+    const blacksmithExpandBtn = document.getElementById('blacksmith-expand-btn');
+    const blacksmithExpanded = document.getElementById('blacksmith-expanded');
+
+    if (blacksmithExpandBtn && blacksmithExpanded) {
+      blacksmithExpandBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const isCollapsed = blacksmithExpanded.classList.contains('collapsed');
+
+        if (isCollapsed) {
+          blacksmithExpanded.classList.remove('collapsed');
+          blacksmithExpandBtn.textContent = '–';
+          extensionSettings.blacksmithExpanded = true;
+        } else {
+          blacksmithExpanded.classList.add('collapsed');
+          blacksmithExpandBtn.textContent = '+';
+          extensionSettings.blacksmithExpanded = false;
+        }
+
+        saveSettings();
+      });
+
+      if (extensionSettings.blacksmithExpanded) {
+        blacksmithExpanded.classList.remove('collapsed');
+        blacksmithExpandBtn.textContent = '–';
+      }
+    }
+
+    const merchantExpandBtn = document.getElementById('merchant-expand-btn');
+    const merchantExpanded = document.getElementById('merchant-expanded');
+
+    if (merchantExpandBtn && merchantExpanded) {
+      merchantExpandBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const isCollapsed = merchantExpanded.classList.contains('collapsed');
+
+        if (isCollapsed) {
+          merchantExpanded.classList.remove('collapsed');
+          merchantExpandBtn.textContent = '–';
+          extensionSettings.merchantExpanded = true;
+        } else {
+          merchantExpanded.classList.add('collapsed');
+          merchantExpandBtn.textContent = '+';
+          extensionSettings.merchantExpanded = false;
+        }
+
+        saveSettings();
+        updateSidebarMerchantSection();
+      });
+
+      if (extensionSettings.merchantExpanded) {
+        merchantExpanded.classList.remove('collapsed');
+        merchantExpandBtn.textContent = '–';
+      }
+      updateSidebarMerchantSection();
+    }
+
+    const inventoryExpandBtn = document.getElementById('inventory-expand-btn');
+    const inventoryExpanded = document.getElementById('inventory-expanded');
+
+    if (inventoryExpandBtn && inventoryExpanded) {
+      inventoryExpandBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const isCollapsed = inventoryExpanded.classList.contains('collapsed');
+
+        if (isCollapsed) {
+          inventoryExpanded.classList.remove('collapsed');
+          inventoryExpandBtn.textContent = '–';
+          extensionSettings.inventoryExpanded = true;
+        } else {
+          inventoryExpanded.classList.add('collapsed');
+          inventoryExpandBtn.textContent = '+';
+          extensionSettings.inventoryExpanded = false;
+        }
+
+        saveSettings();
+        updateSidebarInventorySection();
+      });
+
+      if (extensionSettings.inventoryExpanded) {
+        inventoryExpanded.classList.remove('collapsed');
+        inventoryExpandBtn.textContent = '–';
+      }
+      updateSidebarInventorySection();
+    }
+  }
+
+  function initSettingsModal() {
+    document.getElementById('settings-link').addEventListener('click', (e) => {
+      e.preventDefault();
+      showSettingsModal();
+    });
+  }
+
+  function showSettingsModal() {
+    let modal = document.getElementById('settings-modal');
+    if (!modal) {
+      modal = document.createElement('div');
+      modal.id = 'settings-modal';
+      modal.className = 'settings-modal';
+
+      modal.innerHTML = `
+        <div class="settings-content">
+          <h2 style="color: #cba6f7; margin-bottom: 25px; text-align: center;">Settings</h2>
+
+          <div class="settings-section">
+            <h3>Sidebar Color</h3>
+            <p>Choose a color for the side panel:</p>
+            <div class="color-palette" id="sidebar-colors">
+              <div class="color-option" style="background: #1e1e2e" data-color="#1e1e2e" title="Dark Blue"></div>
+              <div class="color-option" style="background: #2d2d3d" data-color="#2d2d3d" title="Dark Gray"></div>
+              <div class="color-option" style="background: #1a1a2e" data-color="#1a1a2e" title="Night Blue"></div>
+              <div class="color-option" style="background: #16213e" data-color="#16213e" title="Navy"></div>
+              <div class="color-option" style="background: #0f3460" data-color="#0f3460" title="Ocean Blue"></div>
+              <div class="color-option" style="background: #533483" data-color="#533483" title="Purple"></div>
+              <div class="color-option" style="background: #7209b7" data-color="#7209b7" title="Violet"></div>
+              <div class="color-option" style="background: #2d1b69" data-color="#2d1b69" title="Deep Purple"></div>
+              <div class="color-option" style="background: #0b6623" data-color="#0b6623" title="Forest Green"></div>
+              <div class="color-option" style="background: #654321" data-color="#654321" title="Brown"></div>
+              <div class="color-option" style="background: #8b0000" data-color="#8b0000" title="Dark Red"></div>
+              <div class="color-option" style="background: #000000" data-color="#000000" title="Black"></div>
+            </div>
+          </div>
+
+          <div class="settings-section">
+            <h3>Background Color</h3>
+            <p>Choose a background color for the webpage:</p>
+            <div class="color-palette" id="background-colors">
+              <div class="color-option" style="background: #000000" data-color="#000000" title="Black"></div>
+              <div class="color-option" style="background: #1a1a1a" data-color="#1a1a1a" title="Very Dark Gray"></div>
+              <div class="color-option" style="background: #2d2d2d" data-color="#2d2d2d" title="Dark Gray"></div>
+              <div class="color-option" style="background: #0f0f23" data-color="#0f0f23" title="Dark Blue"></div>
+              <div class="color-option" style="background: #1a0033" data-color="#1a0033" title="Dark Purple"></div>
+              <div class="color-option" style="background: #001a00" data-color="#001a00" title="Dark Green"></div>
+              <div class="color-option" style="background: #1a0000" data-color="#1a0000" title="Dark Red"></div>
+              <div class="color-option" style="background: #001a1a" data-color="#001a1a" title="Dark Teal"></div>
+              <div class="color-option" style="background: #1a1a00" data-color="#1a1a00" title="Dark Yellow"></div>
+              <div class="color-option" style="background: #0a0a0a" data-color="#0a0a0a" title="Almost Black"></div>
+              <div class="color-option" style="background: #404040" data-color="#404040" title="Medium Gray"></div>
+              <div class="color-option" style="background: #1e1e2e" data-color="#1e1e2e" title="Blue Gray"></div>
+            </div>
+          </div>
+
+          <div style="text-align: center; margin-top: 30px;">
+            <button class="settings-button" data-action="close">Close</button>
+            <button class="settings-button" data-action="reset">Reset to Default</button>
+            <button class="settings-button" data-action="clear" style="background: #f38ba8;">Clear All Data</button>
+          </div>
+        </div>
+      `;
+
+      document.body.appendChild(modal);
+      setupColorSelectors();
+      updateColorSelections();
+      setupSettingsModalListeners();
+    }
+
+    modal.style.display = 'flex';
+
+    modal.addEventListener('click', (e) => {
+      if (e.target === modal) {
+        closeSettingsModal();
+      }
+    });
+  }
+
+  function setupColorSelectors() {
+    document.querySelectorAll('#sidebar-colors .color-option').forEach(option => {
+      option.addEventListener('click', () => {
+        const color = option.dataset.color;
+        extensionSettings.sidebarColor = color;
+        saveSettings();
+        applySettings();
+        updateColorSelections();
+      });
+    });
+
+    document.querySelectorAll('#background-colors .color-option').forEach(option => {
+      option.addEventListener('click', () => {
+        const color = option.dataset.color;
+        extensionSettings.backgroundColor = color;
+        saveSettings();
+        applySettings();
+        updateColorSelections();
+      });
+    });
+  }
+
+  function setupSettingsModalListeners() {
+    const modal = document.getElementById('settings-modal');
+    if (!modal) return;
+
+    // Close button
+    modal.querySelector('.settings-button[data-action="close"]')?.addEventListener('click', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      closeSettingsModal();
+    });
+
+    // Reset button
+    modal.querySelector('.settings-button[data-action="reset"]')?.addEventListener('click', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      resetSettings();
+    });
+
+    // Clear All Data button
+    modal.querySelector('.settings-button[data-action="clear"]')?.addEventListener('click', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      clearAllData();
+    });
+  }
+
+  function updateColorSelections() {
+    document.querySelectorAll('.color-option').forEach(option => {
+      option.classList.remove('selected');
+    });
+
+    document.querySelectorAll('#sidebar-colors .color-option').forEach(option => {
+      if (option.dataset.color === extensionSettings.sidebarColor) {
+        option.classList.add('selected');
+      }
+    });
+
+    document.querySelectorAll('#background-colors .color-option').forEach(option => {
+      if (option.dataset.color === extensionSettings.backgroundColor) {
+        option.classList.add('selected');
+      }
+    });
+  }
+
+  function closeSettingsModal() {
+    const modal = document.getElementById('settings-modal');
+    if (modal) {
+      modal.style.display = 'none';
+    }
+  }
+
+  function resetSettings() {
+    extensionSettings = {
+      sidebarColor: '#1e1e2e',
+      backgroundColor: '#000000',
+      statAllocationCollapsed: true,
+      statsExpanded: false,
+      petsExpanded: false,
+      blacksmithExpanded: false,
+      continueBattlesExpanded: true,
+      lootExpanded: true,
+      merchantExpanded: false,
+      inventoryExpanded: false,
+      pinnedMerchantItems: [],
+      pinnedInventoryItems: []
+    };
+    saveSettings();
+    applySettings();
+    updateColorSelections();
+    updateSidebarMerchantSection();
+    updateSidebarInventorySection();
+    showNotification('Settings reset to default!', 'success');
+  }
+
+  function clearAllData() {
+    if (confirm('Are you sure you want to clear ALL extension data? This will remove all settings, pinned items, and preferences. This action cannot be undone.')) {
+      // Clear all extension-related localStorage data
+      localStorage.removeItem('demonGameExtensionSettings');
+      localStorage.removeItem('demonGameFilterSettings');
+      localStorage.removeItem('inventoryView');
+      
+      // Reset extension settings to default
+      extensionSettings = {
+        sidebarColor: '#1e1e2e',
+        backgroundColor: '#000000',
+        statAllocationCollapsed: true,
+        statsExpanded: false,
+        petsExpanded: false,
+        blacksmithExpanded: false,
+        continueBattlesExpanded: true,
+        lootExpanded: true,
+        merchantExpanded: false,
+        inventoryExpanded: false,
+        pinnedMerchantItems: [],
+        pinnedInventoryItems: []
+      };
+      
+      // Apply default settings
+      applySettings();
+      updateSidebarMerchantSection();
+      updateSidebarInventorySection();
+      
+      // Close settings modal
+      closeSettingsModal();
+      
+      showNotification('All extension data has been cleared!', 'success');
+      
+      // Reload page to ensure clean state
+      setTimeout(() => {
+        if (confirm('Reload the page to complete the reset?')) {
+          window.location.reload();
+        }
+      }, 2000);
+    }
+  }
+
+  // Global function assignments will be moved to the end of the file
+
+  // Debug function for troubleshooting
+  function debugExtension() {
+    console.log('Extension Debug Info:');
+    console.log('User ID:', userId);
+    console.log('Current Path:', window.location.pathname);
+    console.log('Extension Settings:', extensionSettings);
+    console.log('Pinned Merchant Items:', extensionSettings.pinnedMerchantItems);
+    console.log('Pinned Inventory Items:', extensionSettings.pinnedInventoryItems);
+    
+    const sidebar = document.getElementById('game-sidebar');
+    console.log('Sidebar Element:', sidebar ? 'Found' : 'Not Found');
+    
+    const merchantSection = document.getElementById('merchant-expanded');
+    console.log('Merchant Section:', merchantSection ? 'Found' : 'Not Found');
+    
+    const inventorySection = document.getElementById('inventory-expanded');
+    console.log('Inventory Section:', inventorySection ? 'Found' : 'Not Found');
+    
+    // Check for notification element
+    const notification = document.getElementById('notification');
+    console.log('Notification Element:', notification ? 'Found' : 'Not Found');
+  }
+
+  // Make debug function globally available
+  window.debugExtension = debugExtension;
+
+  // Error handling wrapper for all functions
+  function safeExecute(func, context = 'Unknown') {
+    try {
+      return func();
+    } catch (error) {
+      console.error(`Error in ${context}:`, error);
+      if (typeof showNotification === 'function') {
+        showNotification(`Error in ${context}: ${error.message}`, 'error');
+      }
+    }
+  }
+
+  // MAIN INITIALIZATION
+  if (document.querySelector('.game-topbar')) {
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', () => safeExecute(initializeExtension, 'DOMContentLoaded'));
+    } else {
+      safeExecute(initializeExtension, 'Direct Initialization');
+    }
+  }
+
+  function initializeExtension() {
+    console.log('Demon Game Enhancement v3.0 - Initializing...');
+    
+    // Load settings first
+    safeExecute(() => loadSettings(), 'Load Settings');
+    
+    // Initialize sidebar
+    safeExecute(() => initSideBar(), 'Sidebar Initialization');
+    
+    // Disable dragging on interactive elements
+    safeExecute(() => initDraggableFalse(), 'Disable Dragging');
+    
+    // Initialize page-specific functionality
+    safeExecute(() => initPageSpecificFunctionality(), 'Page-Specific Functionality');
+    
+    console.log('Demon Game Enhancement v3.0 - Initialization Complete!');
+    console.log('Type debugExtension() in console for debug info');
+  }
+
+
+  function initPageSpecificFunctionality() {
+    const currentPath = window.location.pathname;
+
+    for (const [path, handler] of Object.entries(extensionPageHandlers)) {
+      if (currentPath.includes(path)) {
+        console.log(`Initializing ${path} functionality`);
+        handler();
+        break;
+      }
+    }
+  }
+
+  // Enhanced Quick Access Pinning System - Universal Sidebar Shortcuts
+
+  // INVENTORY QUICK ACCESS FUNCTIONS
+  function addInventoryQuickAccessButtons() {
+      // Only run on inventory page
+      if (!window.location.pathname.includes('inventory.php')) return;
+      
+      let attempts = 0;
+      const maxAttempts = 50;
+      
+      const checkAndAddButtons = () => {
+          attempts++;
+          
+          // Look for inventory items (both equipped and unequipped sections)
+          const inventoryItems = document.querySelectorAll('.slot-box:not(.empty):not([data-pin-added])');
+          
+          if (inventoryItems.length === 0) {
+              if (attempts < maxAttempts) {
+                  setTimeout(checkAndAddButtons, 100);
+              }
+      return;
+    }
+
+          console.log(`Adding pin buttons to ${inventoryItems.length} inventory items`);
+          
+          inventoryItems.forEach(item => {
+              // Skip if already processed or is empty slot
+              if (item.hasAttribute('data-pin-added') || item.querySelector('.empty')) return;
+              
+              // Extract item data properly from the DOM structure
+              const itemData = extractInventoryItemData(item);
+              if (!itemData) return;
+              
+              // Create pin button
+              const pinBtn = document.createElement('button');
+              pinBtn.className = 'btn extension-pin-btn';
+              pinBtn.textContent = '📌 Pin';
+              pinBtn.style.cssText = `
+                  background: #8a2be2; 
+                  color: white; 
+                  margin-top: 5px; 
+                  font-size: 11px; 
+                  padding: 4px 8px; 
+                  border: none; 
+                  border-radius: 4px; 
+                  cursor: pointer;
+                  width: 100%;
+              `;
+              
+              pinBtn.onclick = (e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  addToInventoryQuickAccess(itemData, item);
+              };
+              
+              // Add button to the item's label section
+              const labelDiv = item.querySelector('.label');
+              if (labelDiv) {
+                  labelDiv.appendChild(pinBtn);
+              } else {
+                  item.appendChild(pinBtn);
+              }
+              
+              // Mark as processed
+              item.setAttribute('data-pin-added', 'true');
+          });
+      };
+      
+      checkAndAddButtons();
+  }
+
+  function extractInventoryItemData(item) {
+      try {
+          // Get item image and name
+          const img = item.querySelector('img');
+          const itemName = img?.alt || 'Unknown Item';
+          const imageSrc = img?.src || '';
+          
+          // Get label with stats/description
+          const labelDiv = item.querySelector('.label');
+          const labelText = labelDiv?.textContent || '';
+          
+          // Determine item type and extract relevant info
+          let itemType = 'material'; // default
+          let itemId = null;
+          let equipSlot = null;
+          let stats = '';
+          
+          // Check for buttons to determine type and extract IDs
+          const useButton = item.querySelector('button[onclick*="useItem"]');
+          const equipButton = item.querySelector('button[onclick*="showEquipModal"]');
+          const unequipButton = item.querySelector('button[onclick*="unequipItem"]');
+          
+          if (useButton) {
+              // Consumable item - we'll use name-based lookup instead of ID
+              itemType = 'consumable';
+              const onclickStr = useButton.getAttribute('onclick') || '';
+              const match = onclickStr.match(/useItem\(([^)]+)\)/);
+              itemId = match ? match[1] : null;
+          } else if (equipButton) {
+              // Equipment item
+              itemType = 'equipment';
+              const onclickStr = equipButton.getAttribute('onclick') || '';
+              const match = onclickStr.match(/showEquipModal\(\s*(\d+)\s*,\s*['"]([^'"]+)['"],\s*['"]([^'"]+)['"]\s*\)/);
+              if (match) {
+                  equipSlot = match[2];
+                  itemId = match[3];
+              }
+          } else if (unequipButton) {
+              itemType = 'equipped';
+              const onclickStr = unequipButton.getAttribute('onclick') || '';
+              const match = onclickStr.match(/unequipItem\(([^)]+)\)/);
+              itemId = match ? match[1] : null;
+          }
+          
+          // Extract stats from label
+          if (labelText.includes('🔪') || labelText.includes('🛡️')) {
+              const lines = labelText.split('\n').map(line => line.trim()).filter(Boolean);
+              stats = lines.find(line => line.includes('🔪') || line.includes('🛡️')) || '';
+          }
+          
+          // Get quantity if it exists
+          let quantity = 1;
+          const quantityMatch = labelText.match(/x(\d+)/);
+          if (quantityMatch) {
+              quantity = parseInt(quantityMatch[1], 10);
+          }
+          
+          return {
+              id: itemId || Date.now().toString(),
+              name: itemName,
+              image: imageSrc,
+              type: itemType,
+              equipSlot: equipSlot,
+              stats: stats,
+              quantity: quantity,
+              rawLabel: labelText
+          };
+          
+      } catch (error) {
+          console.error('Error extracting inventory item data:', error);
+          return null;
+      }
+  }
+
+  function addToInventoryQuickAccess(itemData, itemElement) {
+    if (extensionSettings.pinnedInventoryItems.length >= 2) {
+      showNotification('Maximum 2 inventory items can be pinned!', 'warning');
+      return;
+    }
+
+      // For consumables, check by name instead of ID since IDs are unique per stack
+      const checkKey = itemData.type === 'consumable' ? itemData.name : itemData.id;
+      const alreadyPinned = extensionSettings.pinnedInventoryItems.some(item => {
+          const pinnedKey = item.type === 'consumable' ? item.name : item.id;
+          return pinnedKey === checkKey;
+      });
+      
+      if (alreadyPinned) {
+          showNotification(`"${itemData.name}" is already pinned!`, 'warning');
+          return;
+      }
+
+    extensionSettings.pinnedInventoryItems.push(itemData);
+    saveSettings();
+    updateSidebarInventorySection();
+    showNotification(`Successfully pinned "${itemData.name}" to inventory quick access!`, 'success');
+      
+      // Update button text to show it's pinned
+      const pinBtn = itemElement.querySelector('.extension-pin-btn');
+      if (pinBtn) {
+          pinBtn.textContent = '✓ Pinned';
+          pinBtn.style.background = '#28a745';
+          pinBtn.disabled = true;
+      }
+  }
+
+  function removeFromInventoryQuickAccess(itemId, itemName) {
+      // Use name for consumables, ID for others
+      extensionSettings.pinnedInventoryItems = extensionSettings.pinnedInventoryItems.filter(item => {
+          if (item.type === 'consumable') {
+              return item.name !== itemName;
+          }
+          return item.id !== itemId;
+      });
+      
+    saveSettings();
+    updateSidebarInventorySection();
+      showNotification(`Removed "${itemName || 'item'}" from inventory quick access`, 'info');
+  }
+
+  // UNIVERSAL INVENTORY ACTION - Works from any page
+  async function executeInventoryAction(itemData, action) {
+      try {
+          if (action === 'use' && itemData.type === 'consumable') {
+              // For consumables, fetch fresh inventory data to get current item ID
+              showNotification('Fetching fresh inventory data...', 'info');
+              
+              try {
+                  // Use the new function to find the specific item by name
+                  console.log(`Looking for item: "${itemData.name}"`);
+                  const targetItem = await findItemByName(itemData.name);
+                  
+                  if (!targetItem) {
+                      showNotification(`No usable ${itemData.name} found in inventory`, 'warning');
+                      return;
+                  }
+                  
+                  console.log(`Found target item: ${targetItem.name} (ID: ${targetItem.itemId}, Quantity: ${targetItem.quantity})`);
+                  
+                  // Use the item with the fresh ID
+                  const useResponse = await fetch('use_item.php', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                      body: `inv_id=${encodeURIComponent(targetItem.itemId)}`
+                  });
+                  
+                  const result = await useResponse.text();
+                  
+                  if (result.includes('successfully') || result.includes('Item consumed')) {
+                      showNotification(`Used ${targetItem.name}! (${targetItem.quantity - 1} remaining)`, 'success');
+                      
+                      // Update the sidebar quantity if it exists
+                      const sidebarItem = document.querySelector(`[data-item-name="${itemData.name}"]`);
+                      if (sidebarItem) {
+                          const quantitySpan = sidebarItem.querySelector('.item-quantity');
+                          if (quantitySpan) {
+                              const newQuantity = Math.max(0, targetItem.quantity - 1);
+                              quantitySpan.textContent = newQuantity > 0 ? `x${newQuantity}` : '';
+                              if (newQuantity === 0) {
+                                  sidebarItem.style.opacity = '0.5';
+                              }
+                          }
+                      }
+                  } else {
+                      showNotification(`Failed to use ${targetItem.name}: ${result}`, 'error');
+                  }
+                      
+                      // Update pinned item quantity
+                      const pinnedItem = extensionSettings.pinnedInventoryItems.find(item => item.name === itemData.name);
+                      if (pinnedItem) {
+                          pinnedItem.quantity = Math.max(0, targetItem.quantity - 1);
+                          saveSettings();
+                      }
+                      
+                      // Refresh displays
+                      setTimeout(() => {
+                          updateSidebarInventorySection();
+                          fetchAndUpdateSidebarStats();
+                      }, 500);
+                  
+              } catch (fetchError) {
+                  console.error('Inventory fetch error:', fetchError);
+                  showNotification('Failed to fetch inventory data', 'error');
+              }
+              
+          } else if (action === 'equip' && itemData.type === 'equipment') {
+              showNotification(`Visit inventory page to equip ${itemData.name}`, 'info');
+          } else {
+              showNotification(`Action "${action}" not supported for this item type`, 'warning');
+          }
+    } catch (error) {
+          showNotification(`${action} failed - script error`, 'error');
+          console.error('Inventory action error:', error);
+      }
+  }
+
+  // MERCHANT QUICK ACCESS FUNCTIONS
+  function addMerchantQuickAccessButtons() {
+      if (!window.location.pathname.includes('merchant.php')) return;
+      
+      let attempts = 0;
+      const maxAttempts = 50;
+      
+      const checkAndAddButtons = () => {
+          attempts++;
+          
+          const merchantCards = document.querySelectorAll('.card[data-merch-id]:not([data-pin-added])');
+          
+          if (merchantCards.length === 0) {
+              if (attempts < maxAttempts) {
+                  setTimeout(checkAndAddButtons, 100);
+              }
+              return;
+          }
+          
+          console.log(`Adding pin buttons to ${merchantCards.length} merchant cards`);
+          
+          merchantCards.forEach(card => {
+              const itemData = extractMerchantItemData(card);
+              if (!itemData) return;
+              
+              const pinBtn = document.createElement('button');
+              pinBtn.className = 'btn extension-pin-btn';
+              pinBtn.textContent = '📌 Pin';
+              pinBtn.style.cssText = `
+                  background: #8a2be2; 
+                  color: white; 
+                  margin-top: 5px; 
+                  font-size: 11px; 
+                  padding: 4px 8px; 
+                  border: none; 
+                  border-radius: 4px; 
+                  cursor: pointer;
+                  width: 100%;
+              `;
+              
+              pinBtn.onclick = (e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  addToMerchantQuickAccess(itemData, card);
+              };
+              
+              const actionsDiv = card.querySelector('.actions');
+              if (actionsDiv) {
+                  actionsDiv.appendChild(pinBtn);
+              } else {
+                  const infoDiv = card.querySelector('.info');
+                  if (infoDiv) {
+                      infoDiv.appendChild(pinBtn);
+                  }
+              }
+              
+              card.setAttribute('data-pin-added', 'true');
+          });
+      };
+      
+      checkAndAddButtons();
+  }
+
+  function extractMerchantItemData(card) {
+      try {
+          const merchId = card.getAttribute('data-merch-id');
+          const currency = card.getAttribute('data-currency');
+          const price = card.getAttribute('data-price');
+          const maxQ = card.getAttribute('data-maxq');
+          const bought = card.getAttribute('data-bought');
+          
+          const nameElement = card.querySelector('.name');
+          const imgElement = card.querySelector('.thumb img');
+          const priceElement = card.querySelector('.price');
+          
+          const itemName = nameElement?.textContent?.trim() || 'Unknown Item';
+          const imageSrc = imgElement?.src || '';
+          
+          let priceDisplay = priceElement?.textContent?.trim() || `${price} ${currency}`;
+          
+          const buyButton = card.querySelector('.buy-btn');
+          const canBuy = buyButton && !buyButton.disabled;
+          
+          const qtyInput = card.querySelector('.qty-input');
+          const hasQuantityControl = !!qtyInput;
+          
+          return {
+              id: merchId,
+              name: itemName,
+              image: imageSrc,
+              currency: currency,
+              price: parseInt(price, 10) || 0,
+              priceDisplay: priceDisplay,
+              maxQ: parseInt(maxQ, 10) || 0,
+              bought: parseInt(bought, 10) || 0,
+              canBuy: canBuy,
+              hasQuantityControl: hasQuantityControl
+          };
+          
+      } catch (error) {
+          console.error('Error extracting merchant item data:', error);
+          return null;
+      }
+  }
+
+  function addToMerchantQuickAccess(itemData, cardElement) {
+      if (extensionSettings.pinnedMerchantItems.length >= 2) {
+          showNotification('Maximum 2 merchant items can be pinned!', 'warning');
+          return;
+      }
+      
+      const alreadyPinned = extensionSettings.pinnedMerchantItems.some(item => 
+          item.id === itemData.id
+      );
+      
+      if (alreadyPinned) {
+          showNotification(`"${itemData.name}" is already pinned!`, 'warning');
+          return;
+      }
+      
+      extensionSettings.pinnedMerchantItems.push(itemData);
+      saveSettings();
+      updateSidebarMerchantSection();
+      showNotification(`Successfully pinned "${itemData.name}" to merchant quick access!`, 'success');
+      
+      const pinBtn = cardElement.querySelector('.extension-pin-btn');
+      if (pinBtn) {
+          pinBtn.textContent = '✓ Pinned';
+          pinBtn.style.background = '#28a745';
+          pinBtn.disabled = true;
+      }
+  }
+
+  function removeFromMerchantQuickAccess(itemId) {
+      const removedItem = extensionSettings.pinnedMerchantItems.find(item => item.id === itemId);
+      extensionSettings.pinnedMerchantItems = extensionSettings.pinnedMerchantItems.filter(item => item.id !== itemId);
+      saveSettings();
+      updateSidebarMerchantSection();
+      showNotification(`Removed "${removedItem?.name || 'item'}" from merchant quick access`, 'info');
+  }
+
+  // UNIVERSAL MERCHANT BUY - Works from any page
+  async function executeMerchantBuy(itemData, quantity = 1) {
+      try {
+          const qty = Math.max(1, Math.min(quantity || 1, 99));
+          
+          const response = await fetch('merchant_buy.php', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+              body: `merch_id=${encodeURIComponent(itemData.id)}&qty=${encodeURIComponent(qty)}`
+          });
+          
+          let data;
+          try {
+              data = await response.json();
+          } catch {
+              data = { status: 'error', message: 'Invalid response from server' };
+          }
+          
+          if (data && data.status === 'success') {
+              showNotification(`Bought ${qty}x ${itemData.name}!`, 'success');
+              
+              // Update pinned item data if server provides updated info
+              if (typeof data.remaining === 'number') {
+                  const pinnedItem = extensionSettings.pinnedMerchantItems.find(item => item.id === itemData.id);
+                  if (pinnedItem) {
+                      pinnedItem.bought = pinnedItem.maxQ - data.remaining;
+                      pinnedItem.canBuy = data.remaining > 0;
+                      saveSettings();
+                  }
+              }
+              
+              // Update displays
+              setTimeout(() => {
+                  updateSidebarMerchantSection();
+                  fetchAndUpdateSidebarStats(); // Update currency display
+              }, 500);
+              
+          } else {
+              const message = data?.message || 'Purchase failed';
+              const isInsufficientFunds = message.toLowerCase().includes('not enough');
+              showNotification(message, isInsufficientFunds ? 'warning' : 'error');
+          }
+          
+    } catch (error) {
+          showNotification('Purchase failed - network error', 'error');
+          console.error('Merchant buy error:', error);
+    }
+  }
+
+  //#region Monster filters and existing functionality
+  async function loadFilterSettings() {
+    return new Promise((resolve) => {
+      try {
+        const settings = JSON.parse(localStorage.getItem('demonGameFilterSettings') || '{}');
+        resolve(settings);
+      } catch {
+        resolve({});
+      }
+    });
+  }
+
+  async function initMonsterFilter() {
+    const observer = new MutationObserver(async (mutations, obs) => {
+      const monsterList = document.querySelectorAll('.monster-card');
+      if (monsterList.length > 0) {
+        obs.disconnect();
+        const settings = await loadFilterSettings();
+        monsterFiltersSettings = settings;
+        createFilterUI(monsterList, settings);
+      }
+    });
+    observer.observe(document.body, {
+      childList: true,
+      subtree: true
+    });
+  }
+
+  function createFilterUI(monsterList, settings) {
+    const filterContainer = document.createElement('div');
+    filterContainer.style.cssText = `
+      padding: 10px;
+      background: #2d2d3d;
+      border-radius: 5px;
+      margin-bottom: 15px;
+      display: flex;
+      gap: 10px;
+      align-items: center;
+      justify-content: center;
+      flex-wrap: wrap;
+    `;
+
+    filterContainer.innerHTML = `
+      <div style="display: flex; flex-wrap: wrap; gap: 10px; align-items: flex-start; justify-content: center; width: 100%;">
+      <input type="text" id="monster-name-filter" placeholder="Filter by name"
+               style="padding: 5px; background: #1e1e2e; color: #cdd6f4; border: 1px solid #45475a; border-radius: 4px; min-width: 150px;">
+        
+        <select id="wave-filter" style="padding: 5px; background: #1e1e2e; color: #cdd6f4; border: 1px solid #45475a; border-radius: 4px; min-width: 100px;">
+          <option value="">All Waves</option>
+          <option value="wave1">Wave 1 Only</option>
+          <option value="wave2">Wave 2 Only</option>
+        </select>
+        
+        <div style="position: relative; display: inline-block;">
+          <button id="monster-type-toggle" style="padding: 5px 10px; background: #1e1e2e; color: #cdd6f4; border: 1px solid #45475a; border-radius: 4px; cursor: pointer; min-width: 120px; text-align: left;">
+            Monster Types ▼
+          </button>
+          <div id="monster-type-dropdown" style="display: none; position: absolute; top: 100%; left: 0; background: #1e1e2e; border: 1px solid #45475a; border-radius: 4px; padding: 10px; z-index: 1000; min-width: 200px; max-height: 200px; overflow-y: auto;">
+            <div style="margin-bottom: 8px; font-weight: bold; color: #cba6f7; border-bottom: 1px solid #45475a; padding-bottom: 5px;">Wave 1 Monsters</div>
+            <label style="display: block; margin: 3px 0; color: #cdd6f4; font-size: 12px;">
+              <input type="checkbox" value="Orc Grunt" class="monster-type-checkbox"> Orc Grunt
+      </label>
+            <label style="display: block; margin: 3px 0; color: #cdd6f4; font-size: 12px;">
+              <input type="checkbox" value="Orc Bonecrusher" class="monster-type-checkbox"> Orc Bonecrusher
+            </label>
+            <label style="display: block; margin: 3px 0; color: #cdd6f4; font-size: 12px;">
+              <input type="checkbox" value="Hobogoblin Spearman" class="monster-type-checkbox"> Hobogoblin Spearman
+            </label>
+            <label style="display: block; margin: 3px 0; color: #cdd6f4; font-size: 12px;">
+              <input type="checkbox" value="Goblin Slinger" class="monster-type-checkbox"> Goblin Slinger
+            </label>
+            <label style="display: block; margin: 3px 0; color: #cdd6f4; font-size: 12px;">
+              <input type="checkbox" value="Goblin Skirmisher" class="monster-type-checkbox"> Goblin Skirmisher
+            </label>
+            <div style="margin: 8px 0; font-weight: bold; color: #cba6f7; border-bottom: 1px solid #45475a; padding-bottom: 5px;">Wave 2 Monsters</div>
+            <label style="display: block; margin: 3px 0; color: #cdd6f4; font-size: 12px;">
+              <input type="checkbox" value="Lizardman Shadowclaw" class="monster-type-checkbox"> Lizardman Shadowclaw
+            </label>
+            <label style="display: block; margin: 3px 0; color: #cdd6f4; font-size: 12px;">
+              <input type="checkbox" value="Troll Brawler" class="monster-type-checkbox"> Troll Brawler
+            </label>
+            <label style="display: block; margin: 3px 0; color: #cdd6f4; font-size: 12px;">
+              <input type="checkbox" value="Lizardman Flamecaster" class="monster-type-checkbox"> Lizardman Flamecaster
+            </label>
+            <label style="display: block; margin: 3px 0; color: #cdd6f4; font-size: 12px;">
+              <input type="checkbox" value="Troll Ravager" class="monster-type-checkbox"> Troll Ravager
+            </label>
+            <div style="margin-top: 8px; padding-top: 5px; border-top: 1px solid #45475a;">
+              <button id="select-all-monsters" style="padding: 3px 8px; background: #a6e3a1; color: #1e1e2e; border: none; border-radius: 3px; cursor: pointer; font-size: 11px; margin-right: 5px;">Select All</button>
+              <button id="clear-monsters" style="padding: 3px 8px; background: #f38ba8; color: white; border: none; border-radius: 3px; cursor: pointer; font-size: 11px;">Clear</button>
+            </div>
+          </div>
+        </div>
+        
+        <select id="hp-filter" style="padding: 5px; background: #1e1e2e; color: #cdd6f4; border: 1px solid #45475a; border-radius: 4px; min-width: 100px;">
+          <option value="">All HP</option>
+          <option value="low">Low HP (&lt;50%)</option>
+          <option value="medium">Medium HP (50-80%)</option>
+          <option value="high">High HP (&gt;80%)</option>
+          <option value="full">Full HP (100%)</option>
+        </select>
+        
+        <select id="player-count-filter" style="padding: 5px; background: #1e1e2e; color: #cdd6f4; border: 1px solid #45475a; border-radius: 4px; min-width: 100px;">
+          <option value="">All Players</option>
+          <option value="empty">Empty (0 players)</option>
+          <option value="few">Few (&lt;10 players)</option>
+          <option value="many">Many (&gt;20 players)</option>
+          <option value="full">Full (30 players)</option>
+        </select>
+        
+      <label style="display: flex; align-items: center; gap: 5px; color: #cdd6f4;">
+        <input type="checkbox" id="hide-img-monsters">
+        Hide images
+      </label>
+        
+      <label style="display: flex; align-items: center; gap: 5px; color: #cdd6f4;">
+        <input type="checkbox" id="battle-limit-alarm">
+        Battle limit alarm
+      </label>
+        
+        <button id="clear-filters" style="padding: 5px 10px; background: #f38ba8; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 12px;">
+          Clear All
+        </button>
+      </div>
+    `;
+
+    const contentArea = document.querySelector('.content-area');
+    const monsterContainer = document.querySelector('.monster-container');
+    if (contentArea && monsterContainer) {
+      contentArea.insertBefore(filterContainer, monsterContainer);
+    }
+
+    // Add event listeners for all filter elements
+    document.getElementById('monster-name-filter').addEventListener('input', applyMonsterFilters);
+    document.getElementById('wave-filter').addEventListener('change', applyMonsterFilters);
+    document.getElementById('hp-filter').addEventListener('change', applyMonsterFilters);
+    document.getElementById('player-count-filter').addEventListener('change', applyMonsterFilters);
+    document.getElementById('hide-img-monsters').addEventListener('change', applyMonsterFilters);
+    document.getElementById('battle-limit-alarm').addEventListener('change', applyMonsterFilters);
+    document.getElementById('clear-filters').addEventListener('click', clearAllFilters);
+    
+    // Monster type dropdown functionality
+    const monsterTypeToggle = document.getElementById('monster-type-toggle');
+    const monsterTypeDropdown = document.getElementById('monster-type-dropdown');
+    
+    monsterTypeToggle.addEventListener('click', (e) => {
+      e.stopPropagation();
+      monsterTypeDropdown.style.display = monsterTypeDropdown.style.display === 'none' ? 'block' : 'none';
+    });
+    
+    // Close dropdown when clicking outside
+    document.addEventListener('click', () => {
+      monsterTypeDropdown.style.display = 'none';
+    });
+    
+    // Monster type checkbox listeners
+    document.querySelectorAll('.monster-type-checkbox').forEach(checkbox => {
+      checkbox.addEventListener('change', applyMonsterFilters);
+    });
+    
+    // Select all and clear buttons for monster types
+    document.getElementById('select-all-monsters').addEventListener('click', () => {
+      document.querySelectorAll('.monster-type-checkbox').forEach(checkbox => {
+        checkbox.checked = true;
+      });
+      applyMonsterFilters();
+    });
+    
+    document.getElementById('clear-monsters').addEventListener('click', () => {
+      document.querySelectorAll('.monster-type-checkbox').forEach(checkbox => {
+        checkbox.checked = false;
+      });
+      applyMonsterFilters();
+    });
+
+    // Initialize filter values from settings
+    if (settings.nameFilter) document.getElementById('monster-name-filter').value = settings.nameFilter;
+    if (settings.waveFilter) document.getElementById('wave-filter').value = settings.waveFilter;
+    if (settings.hpFilter) document.getElementById('hp-filter').value = settings.hpFilter;
+    if (settings.playerCountFilter) document.getElementById('player-count-filter').value = settings.playerCountFilter;
+    if (settings.hideImg) document.getElementById('hide-img-monsters').checked = settings.hideImg;
+    if (settings.battleLimitAlarm) document.getElementById('battle-limit-alarm').checked = settings.battleLimitAlarm;
+
+    // Initialize monster type checkboxes
+    if (settings.monsterTypeFilter && Array.isArray(settings.monsterTypeFilter)) {
+      settings.monsterTypeFilter.forEach(monsterType => {
+        const checkbox = document.querySelector(`.monster-type-checkbox[value="${monsterType}"]`);
+        if (checkbox) checkbox.checked = true;
+      });
+    }
+
+    // Apply filters if any are set
+    if (settings.nameFilter || (settings.monsterTypeFilter && settings.monsterTypeFilter.length > 0) || settings.waveFilter || settings.hpFilter || settings.playerCountFilter || settings.hideImg || settings.battleLimitAlarm) {
+      applyMonsterFilters();
+    }
+  }
+
+  function applyMonsterFilters() {
+    const nameFilter = document.getElementById('monster-name-filter').value.toLowerCase();
+    const waveFilter = document.getElementById('wave-filter').value;
+    const hpFilter = document.getElementById('hp-filter').value;
+    const playerCountFilter = document.getElementById('player-count-filter').value;
+    const hideImg = document.getElementById('hide-img-monsters').checked;
+    const battleLimitAlarm = document.getElementById('battle-limit-alarm').checked;
+
+    // Get selected monster types
+    const selectedMonsterTypes = Array.from(document.querySelectorAll('.monster-type-checkbox:checked')).map(cb => cb.value);
+    
+    // Update monster type button text
+    const monsterTypeToggle = document.getElementById('monster-type-toggle');
+    if (selectedMonsterTypes.length === 0) {
+      monsterTypeToggle.textContent = 'Monster Types ▼';
+    } else if (selectedMonsterTypes.length === 1) {
+      monsterTypeToggle.textContent = `${selectedMonsterTypes[0]} ▼`;
+    } else {
+      monsterTypeToggle.textContent = `${selectedMonsterTypes.length} Types ▼`;
+    }
+
+    if (battleLimitAlarm) {
+      alarmInterval = setInterval(() => {
+        location.reload();
+      }, 5000);
+    } else {
+      clearInterval(alarmInterval);
+    }
+
+    const monsters = document.querySelectorAll('.monster-card');
+    var limitBattleCount = 0;
+
+    monsters.forEach(monster => {
+      const monsterName = monster.querySelector('h3').textContent.toLowerCase();
+      const monsterImg = monster.querySelector('img');
+      
+      // Get HP information
+      const hpText = monster.querySelector('.hp-bar')?.nextElementSibling?.textContent || '';
+      const hpMatch = hpText.match(/❤️\s*([\d,]+)\s*\/\s*([\d,]+)\s*HP/);
+      const currentHp = hpMatch ? parseInt(hpMatch[1].replace(/,/g, '')) : 0;
+      const maxHp = hpMatch ? parseInt(hpMatch[2].replace(/,/g, '')) : 1;
+      const hpPercentage = maxHp > 0 ? (currentHp / maxHp) * 100 : 0;
+      
+      // Get player count information
+      const playerText = monster.textContent;
+      const playerMatch = playerText.match(/👥 Players Joined (\d+)\/30/);
+      const playerCount = playerMatch ? parseInt(playerMatch[1]) : 0;
+
+      // Determine monster wave based on name
+      const monsterWave = getMonsterWave(monsterName);
+
+      // Apply all filters
+      let shouldShow = true;
+
+      // Name filter
+      if (nameFilter && !monsterName.includes(nameFilter)) {
+        shouldShow = false;
+      }
+
+      // Wave filter
+      if (waveFilter) {
+        if (waveFilter === 'wave1' && monsterWave !== 1) {
+          shouldShow = false;
+        } else if (waveFilter === 'wave2' && monsterWave !== 2) {
+          shouldShow = false;
+        }
+      }
+
+      // Monster type filter (multiple selection)
+      if (selectedMonsterTypes.length > 0) {
+        const matchesType = selectedMonsterTypes.some(type => 
+          monsterName.includes(type.toLowerCase())
+        );
+        if (!matchesType) {
+          shouldShow = false;
+        }
+      }
+
+      // HP filter
+      if (hpFilter) {
+        switch (hpFilter) {
+          case 'low':
+            if (hpPercentage >= 50) shouldShow = false;
+            break;
+          case 'medium':
+            if (hpPercentage < 50 || hpPercentage > 80) shouldShow = false;
+            break;
+          case 'high':
+            if (hpPercentage <= 80) shouldShow = false;
+            break;
+          case 'full':
+            if (hpPercentage < 100) shouldShow = false;
+            break;
+        }
+      }
+
+      // Player count filter
+      if (playerCountFilter) {
+        switch (playerCountFilter) {
+          case 'empty':
+            if (playerCount > 0) shouldShow = false;
+            break;
+          case 'few':
+            if (playerCount >= 10) shouldShow = false;
+            break;
+          case 'many':
+            if (playerCount <= 20) shouldShow = false;
+            break;
+          case 'full':
+            if (playerCount < 30) shouldShow = false;
+            break;
+        }
+      }
+
+      // Apply visibility
+      monster.style.display = shouldShow ? '' : 'none';
+
+      // Handle image visibility
+      if (hideImg && monsterImg) {
+        monsterImg.style.display = 'none';
+      } else if (monsterImg) {
+        monsterImg.style.removeProperty('display');
+      }
+
+      // Count battles for alarm
+      if (monster.innerText.includes('Continue the Battle')) {
+        limitBattleCount++;
+      }
+    });
+
+    if (battleLimitAlarm && limitBattleCount < 3) {
+      showNotification('🔔 Battle limit alarm: Less than 3 battles!', 'success');
+    }
+
+    // Save all filter settings
+    const settings = {
+      nameFilter: document.getElementById('monster-name-filter').value,
+      monsterTypeFilter: selectedMonsterTypes,
+      waveFilter: document.getElementById('wave-filter').value,
+      hpFilter: document.getElementById('hp-filter').value,
+      playerCountFilter: document.getElementById('player-count-filter').value,
+      hideImg: document.getElementById('hide-img-monsters').checked,
+      battleLimitAlarm: document.getElementById('battle-limit-alarm').checked
+    };
+    localStorage.setItem('demonGameFilterSettings', JSON.stringify(settings));
+  }
+
+  function getMonsterWave(monsterName) {
+    // Wave 1 monsters
+    const wave1Monsters = [
+      'orc grunt', 'orc bonecrusher', 'hobogoblin spearman', 
+      'goblin slinger', 'goblin skirmisher'
+    ];
+    
+    // Wave 2 monsters
+    const wave2Monsters = [
+      'lizardman shadowclaw', 'troll brawler', 
+      'lizardman flamecaster', 'troll ravager'
+    ];
+    
+    if (wave1Monsters.some(monster => monsterName.includes(monster))) {
+      return 1;
+    } else if (wave2Monsters.some(monster => monsterName.includes(monster))) {
+      return 2;
+    }
+    
+    return 0; // Unknown wave
+  }
+
+  function clearAllFilters() {
+    document.getElementById('monster-name-filter').value = '';
+    document.getElementById('wave-filter').value = '';
+    document.getElementById('hp-filter').value = '';
+    document.getElementById('player-count-filter').value = '';
+    document.getElementById('hide-img-monsters').checked = false;
+    document.getElementById('battle-limit-alarm').checked = false;
+    
+    // Clear all monster type checkboxes
+    document.querySelectorAll('.monster-type-checkbox').forEach(checkbox => {
+      checkbox.checked = false;
+    });
+    
+    applyMonsterFilters();
+    showNotification('All filters cleared!', 'info');
+  }
+  //#endregion
+
+  //#region Loot and battle functionality
+  async function loadInstaLoot(){
+    if (!document.getElementById('lootModal')) {
+      var modal = document.createElement('div');
+      modal.innerHTML = `<div id="lootModal" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.8); z-index:9999; align-items:center; justify-content:center;">
+      <div style="background:#2a2a3d; border-radius:12px; padding:20px; max-width:90%; width:400px; text-align:center; color:white; overflow-y:auto; max-height:80%;">
+          <h2 style="margin-bottom:15px;">🎁 Loot Gained</h2>
+          <div id="lootItems" style="display:flex; flex-wrap:wrap; justify-content:center; gap:10px;"></div>
+          <br>
+          <button class="join-btn" onclick="document.getElementById('lootModal').style.display='none'" style="margin-top:10px;">Close</button>
+      </div>
+  </div>`;
+
+      var notif = document.createElement('div');
+      notif.style = `position: fixed; top: 50vh; right: 40vw;background: #2ecc71;color: white;padding: 12px 20px;border-radius: 10px;box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);font-size: 15px;display: none;z-index: 9999;`;
+      notif.id = "notification";
+
+      const contentArea = document.querySelector('.content-area');
+      if (contentArea) {
+        contentArea.appendChild(modal.firstElementChild);
+        contentArea.appendChild(notif);
+      }
+
+      document.getElementById('lootModal').addEventListener('click', function(event) {
+        this.style.display = 'none';
+      });
+    }
+
+    document.querySelectorAll('.monster-card > a').forEach(x => {
+      if (x.innerText.includes('Loot')) {
+        var instaBtn = document.createElement('button');
+        instaBtn.onclick = function() {
+          lootWave(x.href.split("id=")[1]);
+        };
+        instaBtn.className = "join-btn";
+        instaBtn.innerText = "💰 Loot Instantly";
+        instaBtn.style.marginTop = "8px";
+        x.parentNode.append(instaBtn);
+      }
+    });
+  }
+
+  function joinWaveInstant(monsterId, originalLink) {
+    showNotification('Joining battle...', 'success');
+
+    fetch('user_join_battle.php', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded'
+      },
+      body: 'monster_id=' + monsterId + '&user_id=' + userId,
+      referrer: 'https://demonicscans.org/battle.php?id=' + monsterId
+    })
+    .then(res => res.text())
+    .then(data => {
+      const msg = (data || '').trim();
+      const ok = msg.toLowerCase().startsWith('you have successfully');
+      showNotification(msg || 'Unknown response', ok ? 'success' : 'error');
+      if (ok) {
+        setTimeout(() => {
+          window.location.href = originalLink.href;
+        }, 1000);
+      }
+    })
+    .catch(() => showNotification('Server error. Please try again.', 'error'));
+  }
+
+  function lootWave(monsterId) {
+    fetch('loot.php', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: 'monster_id=' + monsterId + '&user_id=' + userId
+    })
+    .then(res => res.json())
+    .then(data => {
+        if (data.status === 'success') {
+            const lootContainer = document.getElementById('lootItems');
+            lootContainer.innerHTML = '';
+
+            data.items.forEach(item => {
+                const div = document.createElement('div');
+                div.style = 'background:#1e1e2f; border-radius:8px; padding:10px; text-align:center; width:80px;';
+                div.innerHTML = `
+                    <img src="${item.IMAGE_URL}" alt="${item.NAME}" style="width:64px; height:64px;"><br>
+                    <small>${item.NAME}</small>
+                `;
+                lootContainer.appendChild(div);
+            });
+
+            document.getElementById('lootModal').style.display = 'flex';
+        } else {
+            showNotification(data.message || 'Failed to loot.', 'error');
+        }
+    })
+    .catch(() => showNotification("Server error", 'error'));
+  }
+
+  function showNotification(msg, type = 'success') {
+    const note = document.getElementById('notification');
+    if (note) {
+      // Add emojis to enhance messages
+      let emoji = '';
+      if (type === 'success') emoji = '✅ ';
+      else if (type === 'error') emoji = '❌ ';
+      else if (type === 'warning') emoji = '⚠️ ';
+      else if (type === 'info') emoji = 'ℹ️ ';
+      
+      note.innerHTML = emoji + msg;
+      
+      // Enhanced styling
+      if (type === 'error') {
+        note.style.background = 'linear-gradient(135deg, #e74c3c, #c0392b)';
+        note.style.borderLeft = '4px solid #c0392b';
+      } else if (type === 'warning') {
+        note.style.background = 'linear-gradient(135deg, #f39c12, #e67e22)';
+        note.style.borderLeft = '4px solid #e67e22';
+      } else if (type === 'info') {
+        note.style.background = 'linear-gradient(135deg, #3498db, #2980b9)';
+        note.style.borderLeft = '4px solid #2980b9';
+      } else {
+        note.style.background = 'linear-gradient(135deg, #2ecc71, #27ae60)';
+        note.style.borderLeft = '4px solid #27ae60';
+      }
+      
+      note.style.display = 'block';
+      note.style.borderRadius = '8px';
+      note.style.boxShadow = '0 4px 12px rgba(0, 0, 0, 0.3)';
+      
+      setTimeout(() => {
+          note.style.display = 'none';
+      }, 4000); // Slightly longer display time
+    }
+  }
+  //#endregion
+
+  function initGateCollapse() {
+    const gateInfo = document.querySelector('.gate-info');
+    if (!gateInfo) return;
+
+    const header = gateInfo.querySelector('.gate-info-header');
+    const scrollContent = gateInfo.querySelector('.gate-info-scroll');
+
+    if (!header || !scrollContent) return;
+
+    header.classList.add('collapsible-header');
+    scrollContent.classList.add('collapsible-content');
+    scrollContent.classList.toggle('collapsed');
+
+    const style = document.createElement('style');
+    style.textContent = `
+      .collapsible-header {
+        cursor: pointer;
+        user-select: none;
+      }
+      .collapsible-header:hover {
+        background: rgba(255, 255, 255, 0.05);
+      }
+      .collapsible-content.collapsed {
+        display: none;
+      }
+    `;
+    document.head.appendChild(style);
+
+    header.addEventListener('click', function() {
+      scrollContent.classList.toggle('collapsed');
+    });
+  }
+
+  function initContinueBattleFirst(){
+    const monsterContainer = document.querySelector('.monster-container');
+    if (!monsterContainer) return;
+
+    document.querySelectorAll('.monster-card').forEach(x => {
+      if (x.innerText.includes('Continue the Battle')) {
+        monsterContainer.prepend(x);
+      }
+    });
+  }
+
+  function initImprovedWaveButtons() {
+    document.querySelectorAll('.monster-card > a').forEach(battleLink => {
+      if (battleLink.innerText.includes('Join the Battle')) {
+        const monsterId = battleLink.href.split("id=")[1];
+
+        const buttonContainer = document.createElement('div');
+        buttonContainer.style.cssText = 'display: flex; gap: 8px; margin-top: 8px;';
+
+        const joinBtn = document.createElement('button');
+        joinBtn.className = "join-btn";
+        joinBtn.style.cssText = 'flex: 1; font-size: 12px;';
+        joinBtn.innerText = "⚔️ Join Battle";
+        joinBtn.onclick = function() {
+          joinWaveInstant(monsterId, battleLink);
+        };
+
+        const viewBtn = document.createElement('button');
+        viewBtn.className = "join-btn";
+        viewBtn.style.cssText = 'flex: 1; font-size: 12px; background: #6c7086;';
+        viewBtn.innerText = "👁️ View";
+        viewBtn.onclick = function() {
+          window.location.href = battleLink.href;
+        };
+
+        buttonContainer.appendChild(joinBtn);
+        buttonContainer.appendChild(viewBtn);
+
+        battleLink.style.display = 'none';
+        battleLink.parentNode.appendChild(buttonContainer);
+      }
+    });
+  }
+
+  // Enhanced Monster sorting functionality with collapsible sections
+  function initMonsterSorting() {
+    const monsterContainer = document.querySelector('.monster-container');
+    if (!monsterContainer) return;
+
+    const continueBattleSection = document.createElement('div');
+    continueBattleSection.className = 'monster-section';
+    continueBattleSection.innerHTML = `
+      <div class="monster-section-header">
+        <h3 style="color: #f38ba8; margin: 0; flex: 1;">⚔️ Continue Battle</h3>
+        <button class="section-toggle-btn" id="continue-battle-toggle">${extensionSettings.continueBattlesExpanded ? '–' : '+'}</button>
+      </div>
+      <div class="monster-section-content" id="continue-battle-content" style="display: ${extensionSettings.continueBattlesExpanded ? 'block' : 'none'};">
+        <div class="monster-container" style="display: flex; flex-wrap: wrap; gap: 15px; margin-bottom: 20px;"></div>
+      </div>
+    `;
+
+    const lootSection = document.createElement('div');
+    lootSection.className = 'monster-section';
+    lootSection.innerHTML = `
+      <div class="monster-section-header">
+        <h3 style="color: #f9e2af; margin: 0; flex: 1;">💰 Available Loot</h3>
+        <button class="section-toggle-btn" id="loot-toggle">${extensionSettings.lootExpanded ? '–' : '+'}</button>
+      </div>
+      <div class="monster-section-content" id="loot-content" style="display: ${extensionSettings.lootExpanded ? 'block' : 'none'};">
+        <div class="monster-container" style="display: flex; flex-wrap: wrap; gap: 15px; margin-bottom: 20px;"></div>
+      </div>
+    `;
+
+    const joinBattleSection = document.createElement('div');
+    joinBattleSection.className = 'monster-section';
+    joinBattleSection.innerHTML = `
+      <div class="monster-section-header">
+        <h3 style="color: #a6e3a1; margin: 0; flex: 1;">🆕 Join a Battle</h3>
+      </div>
+      <div class="monster-section-content">
+        <div class="monster-container" style="display: flex; flex-wrap: wrap; gap: 15px;"></div>
+      </div>
+    `;
+
+    const monsterCards = Array.from(document.querySelectorAll('.monster-card'));
+    const continueCards = [];
+    const lootCards = [];
+    const joinCards = [];
+
+    monsterCards.forEach(card => {
+      if (card.innerText.includes('Continue the Battle')) {
+        continueCards.push(card);
+      } else if (card.innerText.includes('Loot')) {
+        lootCards.push(card);
+      } else {
+        const hpText = card.querySelector('div[style*="width:"]')?.parentNode?.nextElementSibling?.textContent || '';
+        const hpMatch = hpText.match(/❤️\s*([\d,]+)\s*\/\s*([\d,]+)\s*HP/);
+        if (hpMatch) {
+          const currentHp = parseInt(hpMatch[1].replace(/,/g, ''));
+          card.dataset.currentHp = currentHp;
+        }
+        joinCards.push(card);
+      }
+    });
+
+    joinCards.sort((a, b) => {
+      const hpA = parseInt(a.dataset.currentHp) || 0;
+      const hpB = parseInt(b.dataset.currentHp) || 0;
+      return hpA - hpB;
+    });
+
+    monsterContainer.innerHTML = '';
+
+    if (continueCards.length > 0) {
+      const continueGrid = continueBattleSection.querySelector('.monster-container');
+      continueCards.forEach(card => continueGrid.appendChild(card));
+      monsterContainer.appendChild(continueBattleSection);
+    }
+
+    if (lootCards.length > 0) {
+      const lootGrid = lootSection.querySelector('.monster-container');
+      lootCards.forEach(card => lootGrid.appendChild(card));
+      monsterContainer.appendChild(lootSection);
+    }
+
+    if (joinCards.length > 0) {
+      const joinGrid = joinBattleSection.querySelector('.monster-container');
+      joinCards.forEach(card => joinGrid.appendChild(card));
+      monsterContainer.appendChild(joinBattleSection);
+    }
+
+    const continueToggle = document.getElementById('continue-battle-toggle');
+    const lootToggle = document.getElementById('loot-toggle');
+    const continueContent = document.getElementById('continue-battle-content');
+    const lootContent = document.getElementById('loot-content');
+
+    if (continueToggle && continueContent) {
+      continueToggle.addEventListener('click', () => {
+        const isCollapsed = continueContent.style.display === 'none';
+        continueContent.style.display = isCollapsed ? 'block' : 'none';
+        continueToggle.textContent = isCollapsed ? '–' : '+';
+        extensionSettings.continueBattlesExpanded = isCollapsed;
+        saveSettings();
+      });
+    }
+
+    if (lootToggle && lootContent) {
+      lootToggle.addEventListener('click', () => {
+        const isCollapsed = lootContent.style.display === 'none';
+        lootContent.style.display = isCollapsed ? 'block' : 'none';
+        lootToggle.textContent = isCollapsed ? '–' : '+';
+        extensionSettings.lootExpanded = isCollapsed;
+        saveSettings();
+      });
+    }
+
+    const sectionStyle = document.createElement('style');
+    sectionStyle.textContent = `
+      .monster-section {
+        margin-bottom: 30px;
+        background: rgba(30, 30, 46, 0.3);
+        border-radius: 8px;
+        overflow: hidden;
+      }
+
+      .monster-section-header {
+        display: flex;
+        align-items: center;
+        padding: 15px 20px;
+        background: rgba(203, 166, 247, 0.1);
+        cursor: pointer;
+        border-bottom: 1px solid rgba(88, 91, 112, 0.3);
+      }
+
+      .monster-section-header:hover {
+        background: rgba(203, 166, 247, 0.15);
+      }
+
+      .section-toggle-btn {
+        background: none;
+        border: 1px solid rgba(255, 255, 255, 0.2);
+        color: #e0e0e0;
+        padding: 4px 8px;
+        border-radius: 4px;
+        cursor: pointer;
+        font-size: 14px;
+        font-weight: bold;
+        min-width: 24px;
+      }
+
+      .section-toggle-btn:hover {
+        background: rgba(255, 255, 255, 0.1);
+      }
+
+      .monster-section-content {
+        padding: 15px 20px;
+      }
+    `;
+    document.head.appendChild(sectionStyle);
+  }
+
+  // Additional battle and other functionality...
+  function initReducedImageSize(){
+    const monsterImage = document.getElementById('monsterImage');
+    const panel = document.querySelector('.content-area > .panel');
+    const hpBar = document.querySelector('.hp-bar');
+
+    if (monsterImage) {
+      monsterImage.style.maxHeight = "400px";
+    }
+    if (panel) {
+      panel.style.justifyItems = "center";
+      panel.style.textAlign = "center";
+    }
+    if (hpBar) {
+      hpBar.style.justifySelf = "normal";
+    }
+  }
+
+  function initTotalOwnDamage(){
+    colorMyself();
+    const observer = new MutationObserver((mutations) => {
+      const shouldUpdate = mutations.some(mutation =>
+        mutation.type === 'childList' && mutation.addedNodes.length > 0
+      );
+
+      if (shouldUpdate) {
+        setTimeout(colorMyself, 50);
+      }
+    });
+
+    const config = {
+      childList: true,
+      subtree: true
+    };
+
+    const targetElement = document.querySelector('.leaderboard-panel');
+    if (targetElement) {
+      observer.observe(targetElement, config);
+    }
+  }
+
+  function colorMyself(){
+    document.querySelectorAll('.lb-row a').forEach(x => {
+      if (x.href.includes(userId)) {
+        var lbrow = x.parentElement.parentElement;
+        var exDamageDone = lbrow.querySelector('.lb-dmg').innerText;
+        var exDamageNumber = Number.parseInt(exDamageDone.replaceAll(',','').replaceAll('.',''));
+
+        lbrow.style.backgroundColor = '#7a2020';
+
+        document.querySelectorAll("div.stats-stack > span").forEach(x => {
+          if (x.innerText.includes('Your Damage: ')) {
+            x.innerText = "Your Damage: " + exDamageDone;
+          }
+        });
+
+        var lootContainer = document.createElement('div');
+        lootContainer.id = 'extension-loot-container';
+        lootContainer.style.display = 'ruby';
+        lootContainer.style.maxWidth = '50%';
+
+        document.querySelectorAll('.loot-card').forEach(x => lootContainer.append(x));
+
+        var enemyAndLootContainer = document.createElement('div');
+        enemyAndLootContainer.id = 'extension-enemy-loot-container';
+        enemyAndLootContainer.style.display = 'inline-flex';
+
+        const monsterImage = document.querySelector('.monster_image');
+        if (monsterImage) {
+          enemyAndLootContainer.append(monsterImage);
+        }
+        enemyAndLootContainer.append(lootContainer);
+
+        const panel = document.querySelector("body > div.main-wrapper > div > .panel");
+        if (panel) {
+          panel.prepend(enemyAndLootContainer);
+        }
+
+        document.querySelectorAll('.loot-card').forEach(y => {
+          y.style.margin = '5px';
+          y.querySelectorAll('.loot-stats .chip').forEach(x => {
+            if (x.parentElement) {
+              x.parentElement.style.gap = '0px';
+            }
+            if (x.innerText.includes('DMG req')) {
+              var lootReqNumber = Number.parseInt(x.innerText.substr(9).replaceAll(',','').replaceAll('.',''));
+              if (lootReqNumber <= exDamageNumber) {
+                y.style.background = 'rgb(0 255 30 / 20%)';
+                y.style.boxShadow = '0 0 15px rgba(255, 215, 0, 0.6)';
+                try {
+                  y.classList.remove('locked');
+                  const lockBadge = y.querySelector('.lock-badge');
+                  if (lockBadge) {
+                    lockBadge.remove();
+                  }
+                } catch {}
+              }
+            }
+          });
+        });
+      }
+    });
+  }
+
+  function initAnyClickClosesModal(){
+    const lootModal = document.getElementById('lootModal');
+    if (lootModal) {
+      lootModal.addEventListener('click', function(event) {
+        this.style.display = 'none';
+      });
+    }
+  }
+
+  // Stat allocation functions
+  function allocateStatPoints(stat, amount) {
+    const currentPoints = parseInt(document.getElementById('v-points')?.textContent || '0');
+    if (currentPoints < amount) {
+      showNotification('Not enough stat points!', 'error');
+      return;
+    }
+
+    const body = `action=allocate&stat=${encodeURIComponent(stat)}&amount=${encodeURIComponent(amount)}`;
+    fetch('stats_ajax.php', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body
+    })
+    .then(async r => {
+      const txt = await r.text();
+      try {
+        return { okHTTP: r.ok, json: JSON.parse(txt), raw: txt };
+      } catch {
+        throw new Error(`Bad JSON (${r.status}): ${txt}`);
+      }
+    })
+    .then(pack => {
+      if (!pack.okHTTP) {
+        showNotification(`HTTP ${pack.raw}`, 'error');
+        return;
+      }
+      const res = pack.json;
+      if (!res.ok) {
+        showNotification(res.msg || 'Error', 'error');
+        return;
+      }
+
+      const u = res.user;
+      document.getElementById('v-points').textContent = u.STAT_POINTS;
+      document.getElementById('v-attack').textContent = u.ATTACK;
+      document.getElementById('v-defense').textContent = u.DEFENSE;
+      document.getElementById('v-stamina').textContent = u.STAMINA;
+
+      updateSidebarStats(u);
+      showNotification(`Allocated ${amount} points to ${stat}!`, 'success');
+
+      setTimeout(() => {
+        const statSection = document.querySelector('#stat-allocation-content');
+        if (statSection) {
+          initStatAllocation();
+        }
+      }, 500);
+    })
+    .catch(error => {
+      showNotification('Failed to allocate stats', 'error');
+      console.error('Error:', error);
+    });
+  }
+
+  function sidebarAlloc(stat, amount) {
+      const pointsElement = document.getElementById('sidebar-points');
+      const currentPoints = parseInt(pointsElement?.textContent || '0');
+
+      if (currentPoints < amount) {
+          showNotification(`Not enough points! You need ${amount} points but only have ${currentPoints}.`, 'error');
+          return;
+      }
+
+      // Map our stat names to what the server expects
+      const statMapping = {
+          'attack': 'attack',
+          'defense': 'defense', 
+          'stamina': 'stamina'
+      };
+
+      const serverStat = statMapping[stat] || stat;
+      const body = `action=allocate&stat=${encodeURIComponent(serverStat)}&amount=${encodeURIComponent(amount)}`;
+
+      // Disable all upgrade buttons temporarily
+      document.querySelectorAll('.upgrade-btn').forEach(btn => btn.disabled = true);
+
+      fetch('stats_ajax.php', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+          body
+      })
+      .then(async r => {
+          const txt = await r.text();
+          try {
+              const json = JSON.parse(txt);
+              if (json.error) {
+                  throw new Error(json.error);
+              }
+              return { okHTTP: r.ok, json, raw: txt };
+          } catch (parseError) {
+              // If not JSON or has error, try to parse as plain text
+              if (r.ok && txt.includes('STAT_POINTS')) {
+                  const stats = {};
+                  const lines = txt.split('\n');
+                  lines.forEach(line => {
+                      if (line.includes('STAT_POINTS')) stats.STAT_POINTS = line.split('=')[1]?.trim();
+                      if (line.includes('ATTACK')) stats.ATTACK = line.split('=')[1]?.trim();
+                      if (line.includes('DEFENSE')) stats.DEFENSE = line.split('=')[1]?.trim();
+                      if (line.includes('STAMINA')) stats.STAMINA = line.split('=')[1]?.trim();
+                  });
+                  return { okHTTP: r.ok, json: { ok: true, user: stats }, raw: txt };
+              }
+              throw new Error(`Bad response (${r.status}): ${txt}`);
+          }
+      })
+      .then(pack => {
+          if (!pack.okHTTP) {
+              showNotification(`HTTP Error: ${pack.raw}`, 'error');
+              return;
+          }
+
+          const res = pack.json;
+          if (!res.ok) {
+              showNotification(res.msg || res.error || 'Allocation failed', 'error');
+              return;
+          }
+
+          const u = res.user;
+          updateSidebarStats(u);
+
+          // Also update main stats page if we're on it
+          if (window.location.pathname.includes('stats')) {
+              const mainPoints = document.getElementById('v-points');
+              const mainAttack = document.getElementById('v-attack');
+              const mainDefense = document.getElementById('v-defense');
+              const mainStamina = document.getElementById('v-stamina');
+
+              if (mainPoints) mainPoints.textContent = u.STAT_POINTS || u.stat_points || 0;
+              if (mainAttack) mainAttack.textContent = u.ATTACK || u.attack || 0;
+              if (mainDefense) mainDefense.textContent = u.DEFENSE || u.defense || 0;
+              if (mainStamina) mainStamina.textContent = u.STAMINA || u.MAX_STAMINA || u.stamina || 0;
+          }
+
+          showNotification(`Successfully upgraded ${stat} by ${amount}!`, 'success');
+      })
+      .catch(err => {
+          console.error(err);
+          showNotification(err.message || 'Network error occurred', 'error');
+      })
+      .finally(() => {
+          // Re-enable upgrade buttons
+          document.querySelectorAll('.upgrade-btn').forEach(btn => btn.disabled = false);
+          // Refresh stats after allocation
+          setTimeout(fetchAndUpdateSidebarStats, 500);
+      });
+  }
+
+  // Page initialization functions
+  function initWaveMods() {
+    initGateCollapse()
+    initMonsterFilter()
+    loadInstaLoot()
+    initContinueBattleFirst()
+    initImprovedWaveButtons()
+    initMonsterSorting()
+  }
+
+  function initPvPMods(){
+    initPvPBannerFix()
+  }
+
+  function initDashboardTools() {
+    console.log("Initializing dashboard tools");
+  }
+
+  function initBattleMods(){
+    initReducedImageSize()
+    initTotalOwnDamage()
+    initAnyClickClosesModal()
+  }
+
+  function initChatMods(){
+      const logEl = document.getElementById("chatLog");
+      if (logEl) {
+        logEl.scrollTop = logEl.scrollHeight;
+      }
+  }
+
+  function initInventoryMods(){
+    initAlternativeInventoryView()
+    initItemTotalDmg()
+    addInventoryQuickAccessButtons()
+  }
+
+  function initMerchantMods() {
+    addMerchantQuickAccessButtons()
+  }
+
+  function initPetMods(){
+    initPetTotalDmg()
+    showComingSoon('Pets')
+  }
+
+  function initStatMods(){
+    initPlayerAtkDamage()
+    // Stat allocation moved to sidebar - no longer needed on stats page
+  }
+
+  function initBlacksmithMods(){
+    showComingSoon('Blacksmith')
+  }
+
+  function initEventMods(){
+    initRankingSideBySide()
+  }
+
+  function initRankingSideBySide(){
+    // Remove the Orc King image if it exists
+    const orcKingImg = document.querySelector('img[alt="Orc King of Grakthar"]');
+    if (orcKingImg) {
+      console.log('Removing Orc King of Grakthar image');
+      orcKingImg.remove();
+    }
+
+    // Only proceed with side-by-side layout if we have enough panels
+    var panels = document.querySelectorAll('div.panel');
+    if (panels.length >= 2) {
+      var container = document.createElement('div');
+      container.style.cssText = 'display:flex;';
+      
+      var topDmg = panels[panels.length-2];
+      var topKills = panels[panels.length-1];
+      
+      // Add event-table class to tables if they exist
+      const topDmgTable = topDmg.querySelector('table');
+      const topKillsTable = topKills.querySelector('table');
+      
+      if (topDmgTable) topDmgTable.classList.add('event-table');
+      if (topKillsTable) topKillsTable.classList.add('event-table');
+      
+      topKills.style.marginLeft = "20px";
+      container.appendChild(topDmg);
+      container.appendChild(topKills);
+      
+      const wrap = document.querySelector('.wrap');
+      if (wrap) {
+        wrap.appendChild(container);
+        console.log('Applied side-by-side ranking layout');
+      }
+    } else {
+      console.log('Not enough panels found for side-by-side layout');
+    }
+  }
+
+  // AUTO-UPDATE INVENTORY QUANTITIES
+  // Periodically refresh inventory item quantities for pinned consumables
+  function startInventoryQuantityUpdater() {
+      // Only update if we have pinned consumables and we're not on inventory page
+      if (!extensionSettings.pinnedInventoryItems.some(item => item.type === 'consumable')) return;
+      if (window.location.pathname.includes('inventory.php')) return;
+      
+      setInterval(async () => {
+          try {
+              const response = await fetch('inventory.php');
+              const html = await response.text();
+              
+              const sections = html.split('🧪 Consumables');
+              if (sections.length < 2) return;
+              
+              const consumablesSection = sections[1].split('⚒️ Materials')[0];
+              const parser = new DOMParser();
+              const doc = parser.parseFromString(consumablesSection, 'text/html');
+              const slots = doc.querySelectorAll('.slot-box');
+              
+              let updated = false;
+              
+              for (const pinnedItem of extensionSettings.pinnedInventoryItems) {
+                  if (pinnedItem.type !== 'consumable') continue;
+                  
+                  let found = false;
+                  for (const slot of slots) {
+                      const img = slot.querySelector('img');
+                      if (img && img.alt === pinnedItem.name) {
+                          const quantityMatch = slot.textContent.match(/x(\d+)/);
+                          const currentQuantity = quantityMatch ? parseInt(quantityMatch[1], 10) : 1;
+                          
+                          if (currentQuantity !== pinnedItem.quantity) {
+                              pinnedItem.quantity = currentQuantity;
+                              updated = true;
+                          }
+                          found = true;
+                          break;
+                      }
+                  }
+                  
+                  // If item not found, set quantity to 0
+                  if (!found && pinnedItem.quantity > 0) {
+                      pinnedItem.quantity = 0;
+                      updated = true;
+                  }
+              }
+              
+              if (updated) {
+                  saveSettings();
+                  updateSidebarInventorySection();
+              }
+              
+          } catch (error) {
+              console.log('Inventory quantity update failed:', error);
+          }
+      }, 30000); // Update every 30 seconds
+  }
+
+  // Initialize quantity updater when extension loads
+  document.addEventListener('DOMContentLoaded', () => {
+      setTimeout(startInventoryQuantityUpdater, 5000); // Start after 5 seconds
+      // Also fetch stats on page load
+      setTimeout(fetchAndUpdateSidebarStats, 1000);
+  });
+
+  // Fetch and update sidebar stats
+  function fetchAndUpdateSidebarStats() {
+      // Try to get stats from the current page first (if on stats page)
+      if (window.location.pathname.includes('stats.php')) {
+          const points = document.getElementById('v-points')?.textContent || '0';
+          const attack = document.getElementById('v-attack')?.textContent || '0';
+          const defense = document.getElementById('v-defense')?.textContent || '0';
+          const stamina = document.getElementById('v-stamina')?.textContent || '0';
+          
+          if (points !== '0' || attack !== '0' || defense !== '0' || stamina !== '0') {
+              updateSidebarStats({
+                  STAT_POINTS: points,
+                  ATTACK: attack,
+                  DEFENSE: defense,
+                  STAMINA: stamina
+              });
+              return;
+          }
+      }
+      
+      // If not on stats page or no data found, try to fetch from stats page
+      fetch('stats.php')
+      .then(response => response.text())
+      .then(html => {
+          const parser = new DOMParser();
+          const doc = parser.parseFromString(html, 'text/html');
+          
+          const points = doc.getElementById('v-points')?.textContent || '0';
+          const attack = doc.getElementById('v-attack')?.textContent || '0';
+          const defense = doc.getElementById('v-defense')?.textContent || '0';
+          const stamina = doc.getElementById('v-stamina')?.textContent || '0';
+          
+          updateSidebarStats({
+              STAT_POINTS: points,
+              ATTACK: attack,
+              DEFENSE: defense,
+              STAMINA: stamina
+          });
+      })
+      .catch(err => {
+          console.error('Stats fetch error:', err);
+          // Fallback: try to get from any existing elements on current page
+          const points = document.getElementById('v-points')?.textContent || '0';
+          const attack = document.getElementById('v-attack')?.textContent || '0';
+          const defense = document.getElementById('v-defense')?.textContent || '0';
+          const stamina = document.getElementById('v-stamina')?.textContent || '0';
+          
+          if (points !== '0' || attack !== '0' || defense !== '0' || stamina !== '0') {
+              updateSidebarStats({
+                  STAT_POINTS: points,
+                  ATTACK: attack,
+                  DEFENSE: defense,
+                  STAMINA: stamina
+              });
+          }
+      });
+  }
+
+  // Update sidebar stats display
+  function updateSidebarStats(userData) {
+      const sidebarPoints = document.getElementById('sidebar-points');
+      const sidebarAttack = document.getElementById('sidebar-attack');
+      const sidebarDefense = document.getElementById('sidebar-defense');
+      const sidebarStamina = document.getElementById('sidebar-stamina');
+      
+      // Update allocation section too
+      const sidebarPointsAlloc = document.getElementById('sidebar-points-alloc');
+      const sidebarAttackAlloc = document.getElementById('sidebar-attack-alloc');
+      const sidebarDefenseAlloc = document.getElementById('sidebar-defense-alloc');
+      const sidebarStaminaAlloc = document.getElementById('sidebar-stamina-alloc');
+
+      if (sidebarPoints) sidebarPoints.textContent = userData.STAT_POINTS || userData.stat_points || 0;
+      if (sidebarAttack) sidebarAttack.textContent = userData.ATTACK || userData.attack || 0;
+      if (sidebarDefense) sidebarDefense.textContent = userData.DEFENSE || userData.defense || 0;
+      if (sidebarStamina) sidebarStamina.textContent = userData.STAMINA || userData.MAX_STAMINA || userData.stamina || 0;
+
+      if (sidebarPointsAlloc) sidebarPointsAlloc.textContent = userData.STAT_POINTS || userData.stat_points || 0;
+      if (sidebarAttackAlloc) sidebarAttackAlloc.textContent = userData.ATTACK || userData.attack || 0;
+      if (sidebarDefenseAlloc) sidebarDefenseAlloc.textContent = userData.DEFENSE || userData.defense || 0;
+      if (sidebarStaminaAlloc) sidebarStaminaAlloc.textContent = userData.STAMINA || userData.MAX_STAMINA || userData.stamina || 0;
+  }
+
+  // SIDEBAR SECTION UPDATES
+  function updateSidebarInventorySection() {
+      const inventoryContent = document.getElementById('inventory-expanded');
+      if (!inventoryContent) return;
+
+    let content = '<div class="sidebar-quick-access">';
+    
+      if (extensionSettings.pinnedInventoryItems.length === 0) {
+          content += '<div class="quick-access-empty">No pinned items. Visit inventory to pin items.</div>';
+    } else {
+          extensionSettings.pinnedInventoryItems.forEach(item => {
+              const displayQuantity = item.quantity > 1 ? ` (x${item.quantity})` : '';
+              const itemKey = item.type === 'consumable' ? item.name : item.id;
+        
+        content += `
+                  <div class="quick-access-item" data-item-id="${item.id}" data-item-name="${item.name}" data-item-type="${item.type}">
+            <div class="qa-item-header">
+                          <img src="${item.image}" alt="${item.name}" style="width: 24px; height: 24px; border-radius: 4px;" onerror="this.style.display='none'">
+              <div class="qa-item-info">
+                              <div class="qa-item-name">${item.name}${displayQuantity}</div>
+                              <div class="qa-item-stats">${item.stats}</div>
+              </div>
+                          <button class="qa-remove-btn" data-action="remove">×</button>
+            </div>
+            <div class="qa-item-actions">
+                          ${item.type === 'consumable' && item.quantity > 0 ? 
+                            `<button class="qa-use-btn" data-action="use">Use</button>` :
+                            item.type === 'equipment' ?
+                            `<button class="qa-equip-btn" data-action="equip">View</button>` :
+                            `<span style="font-size: 11px; color: #888;">Material</span>`
+                          }
+                          ${item.type === 'consumable' && item.quantity === 0 ? 
+                            `<span style="font-size: 11px; color: #f38ba8;">Out of stock</span>` : ''
+                          }
+            </div>
+          </div>
+        `;
+      });
+    }
+    
+    content += '</div>';
+    inventoryContent.innerHTML = content;
+    
+    // Add event listeners for inventory quick access buttons
+    setupInventoryQuickAccessListeners();
+  }
+
+  function updateSidebarMerchantSection() {
+    const merchantContent = document.getElementById('merchant-expanded');
+    if (!merchantContent) return;
+
+    let content = '<div class="sidebar-quick-access">';
+    
+    if (extensionSettings.pinnedMerchantItems.length === 0) {
+      content += '<div class="quick-access-empty">No pinned items. Visit merchant to pin items.</div>';
+    } else {
+      extensionSettings.pinnedMerchantItems.forEach(item => {
+              const remaining = item.maxQ > 0 ? Math.max(0, item.maxQ - item.bought) : 999;
+              const canBuy = item.maxQ === 0 || remaining > 0;
+        
+        content += `
+                  <div class="quick-access-item" data-item-id="${item.id}" data-item-name="${item.name}" data-item-currency="${item.currency}" data-item-price="${item.price}">
+            <div class="qa-item-header">
+                          <img src="${item.image}" alt="${item.name}" style="width: 24px; height: 24px; border-radius: 4px;" onerror="this.style.display='none'">
+              <div class="qa-item-info">
+                <div class="qa-item-name">${item.name}</div>
+                              <div class="qa-item-price">${item.priceDisplay}</div>
+                              ${item.maxQ > 0 ? `<div class="qa-item-limit">Remaining: ${remaining}/${item.maxQ}</div>` : ''}
+              </div>
+                          <button class="qa-remove-btn" data-action="remove">×</button>
+            </div>
+            <div class="qa-item-actions">
+                          <button class="qa-buy-btn" ${!canBuy ? 'disabled' : ''} data-action="buy">
+                              ${canBuy ? 'Buy' : 'Sold Out'}
+              </button>
+            </div>
+          </div>
+        `;
+      });
+    }
+    
+    content += '</div>';
+    merchantContent.innerHTML = content;
+    
+    // Add event listeners for merchant quick access buttons
+    setupMerchantQuickAccessListeners();
+  }
+
+  // Setup event listeners for quick access buttons
+  function setupInventoryQuickAccessListeners() {
+    const inventoryContent = document.getElementById('inventory-expanded');
+    if (!inventoryContent) return;
+
+    // Remove button listeners
+    inventoryContent.querySelectorAll('.qa-remove-btn[data-action="remove"]').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        const item = btn.closest('.quick-access-item');
+        const itemId = item?.dataset.itemId;
+        const itemName = item?.dataset.itemName;
+        if (itemId && itemName) {
+          removeFromInventoryQuickAccess(itemId, itemName);
+        }
+      });
+    });
+    
+    // Use button listeners
+    inventoryContent.querySelectorAll('.qa-use-btn[data-action="use"]').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        const item = btn.closest('.quick-access-item');
+        const itemId = item?.dataset.itemId;
+        const itemName = item?.dataset.itemName;
+        const itemType = item?.dataset.itemType;
+        if (itemId && itemName && itemType) {
+          executeInventoryAction({id: itemId, name: itemName, type: itemType}, 'use');
+        }
+      });
+    });
+    
+    // Equip button listeners
+    inventoryContent.querySelectorAll('.qa-equip-btn[data-action="equip"]').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        const item = btn.closest('.quick-access-item');
+        const itemId = item?.dataset.itemId;
+        const itemName = item?.dataset.itemName;
+        const itemType = item?.dataset.itemType;
+        if (itemId && itemName && itemType) {
+          executeInventoryAction({id: itemId, name: itemName, type: itemType}, 'equip');
+        }
+      });
+    });
+  }
+
+  function setupMerchantQuickAccessListeners() {
+    const merchantContent = document.getElementById('merchant-expanded');
+    if (!merchantContent) return;
+    
+    // Remove button listeners
+    merchantContent.querySelectorAll('.qa-remove-btn[data-action="remove"]').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        const item = btn.closest('.quick-access-item');
+        const itemId = item?.dataset.itemId;
+        if (itemId) {
+          removeFromMerchantQuickAccess(itemId);
+        }
+      });
+    });
+    
+    // Buy button listeners
+    merchantContent.querySelectorAll('.qa-buy-btn[data-action="buy"]').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        if (btn.disabled) return;
+        
+        const item = btn.closest('.quick-access-item');
+        const itemId = item?.dataset.itemId;
+        const itemName = item?.dataset.itemName;
+        const itemCurrency = item?.dataset.itemCurrency;
+        const itemPrice = item?.dataset.itemPrice;
+        
+        if (itemId && itemName && itemCurrency && itemPrice) {
+          executeMerchantBuy({
+            id: itemId, 
+            name: itemName, 
+            currency: itemCurrency, 
+            price: parseInt(itemPrice, 10)
+          });
+        }
+      });
+    });
+  }
+
+  // Other utility functions
+  function initPvPBannerFix(){
+    var contentArea = document.querySelector('.content-area');
+    var seasonCountdown = document.querySelector('.season-cta');
+    var pvpHero = document.querySelector('.pvp-hero');
+    if (pvpHero) {
+      pvpHero.style.marginTop = "0px";
+      if(seasonCountdown){
+        contentArea.prepend(seasonCountdown)
+      }
+      contentArea.prepend(pvpHero)
+      const br = document.querySelector('br');
+      if (br) br.remove();
+    }
+  }
+
+  function initPlayerAtkDamage(){
+    const atkElement = document.getElementById('v-attack');
+    if (!atkElement) return;
+
+    var atkValue = Number.parseInt(atkElement.innerText.replaceAll(',','').replaceAll('.',''))
+    const statCard = document.querySelectorAll('.grid .card')[1];
+    if (!statCard) return;
+
+    const defenseValues = [0, 25, 50];
+    defenseValues.forEach((def, index) => {
+      var statRow = document.createElement('div')
+      statRow.title = `Damage is calculated based on ${def} DEF monster`
+      statRow.classList.add('row')
+      statRow.style.color = 'red'
+
+      var statName = document.createElement('span')
+      statName.innerText = `ATTACK DMG VS ${def} DEF`
+
+      var statValue = document.createElement('span')
+      var playerTotalDmg = calcDmg(atkValue, def)
+      statValue.innerText = playerTotalDmg;
+
+      statRow.append(statName)
+      statRow.append(statValue)
+      statCard.append(statRow)
+    });
+  }
+
+  function calcDmg(atkValue,def){
+    return Math.round(1000*((atkValue-def)**0.25));
+  }
+
+  function initPetTotalDmg(){
+    const petSection = document.querySelector('.section');
+    const sectionTitle = document.querySelector('.section-title');
+    if (!petSection || !sectionTitle) return;
+
+    var petTotalDmg = 0;
+    petSection.querySelectorAll('.pet-atk').forEach(x => {
+      petTotalDmg += Number.parseInt(x.innerText)
+    });
+
+    var finalAmount = petTotalDmg * 20;
+    var totalDmgContainer = document.createElement('span');
+    totalDmgContainer.id = 'total-pet-damage';
+    totalDmgContainer.innerText = ' - Total pet damage: ' + finalAmount;
+    totalDmgContainer.style.color = '#f38ba8';
+    sectionTitle.appendChild(totalDmgContainer);
+  }
+
+  function initItemTotalDmg(){
+    const itemSection = document.querySelector('.section');
+    const sectionTitle = document.querySelector('.section-title');
+    if (!itemSection || !sectionTitle) return;
+
+    var itemsTotalDmg = 0;
+    itemSection.querySelectorAll('.label').forEach(x => {
+      const labelText = x.innerText;
+      const atkIndex = labelText.indexOf('🔪');
+      if (atkIndex !== -1) {
+        const atkText = labelText.substring(atkIndex + 3);
+        const atkMatch = atkText.match(/(\d+)\s*ATK/);
+        if (atkMatch) {
+          itemsTotalDmg += parseInt(atkMatch[1]);
+        }
+      }
+    });
+
+    var finalAmount = itemsTotalDmg * 20;
+    var totalDmgContainer = document.createElement('span');
+    totalDmgContainer.id = 'total-item-damage';
+    totalDmgContainer.innerText = ' - Total item damage: ' + finalAmount;
+    totalDmgContainer.style.color = '#a6e3a1';
+    sectionTitle.appendChild(totalDmgContainer);
+  }
+
+  // Function to extract item data from HTML structure
+  function extractItemDataFromHTML(htmlContent) {
+    console.log('Extracting item data from HTML...');
+    const parser = new DOMParser();
+    const doc = parser.parseFromString(htmlContent, 'text/html');
+    const items = [];
+    
+    // Find all slot-box elements
+    const slotBoxes = doc.querySelectorAll('.slot-box');
+    console.log(`Found ${slotBoxes.length} slot-box elements`);
+    
+    slotBoxes.forEach((slot, index) => {
+      const itemData = {};
+      
+      // Extract image and name
+      const img = slot.querySelector('img');
+      if (img) {
+        itemData.name = img.alt;
+        itemData.imageUrl = img.src;
+        console.log(`Slot ${index}: Found item "${itemData.name}"`);
+      }
+      
+      // Extract item ID from use button
+      const useButton = slot.querySelector('button[onclick*="useItem"]');
+      if (useButton) {
+        const onclickStr = useButton.getAttribute('onclick') || '';
+        console.log(`Slot ${index}: Use button onclick: ${onclickStr}`);
+        const match = onclickStr.match(/useItem\(([^)]+)\)/);
+        if (match) {
+          itemData.itemId = match[1];
+          console.log(`Slot ${index}: Extracted item ID: ${itemData.itemId}`);
+        }
+      } else {
+        console.log(`Slot ${index}: No use button found`);
+      }
+      
+      // Extract quantity
+      const quantityMatch = slot.textContent.match(/x(\d+)/);
+      if (quantityMatch) {
+        itemData.quantity = parseInt(quantityMatch[1], 10);
+        console.log(`Slot ${index}: Quantity: ${itemData.quantity}`);
+      } else {
+        itemData.quantity = 1;
+      }
+      
+      // Extract description from info button
+      const infoButton = slot.querySelector('.info-btn');
+      if (infoButton) {
+        itemData.description = infoButton.getAttribute('data-desc') || '';
+      }
+      
+      // Only add items that have an item ID (usable items)
+      if (itemData.itemId) {
+        items.push(itemData);
+        console.log(`Slot ${index}: Added item "${itemData.name}" with ID ${itemData.itemId}`);
+      } else {
+        console.log(`Slot ${index}: Skipped item (no item ID)`);
+      }
+    });
+    
+    console.log(`Extracted ${items.length} consumable items total`);
+    return items;
+  }
+
+  // Function to automatically click "show more" buttons
+  async function autoClickShowMore() {
+    const showMoreButtons = document.querySelectorAll('button, a, input[type="button"]');
+    let clickedAny = false;
+    
+    for (const button of showMoreButtons) {
+      const buttonText = button.textContent || button.value || '';
+      const buttonTitle = button.title || '';
+      
+      // Look for "show more", "load more", "more", etc.
+      if (buttonText.toLowerCase().includes('more') || 
+          buttonText.toLowerCase().includes('load') ||
+          buttonTitle.toLowerCase().includes('more') ||
+          buttonTitle.toLowerCase().includes('load')) {
+        
+        console.log(`Auto-clicking "show more" button: ${buttonText}`);
+        button.click();
+        clickedAny = true;
+        
+        // Wait a bit for content to load
+        await new Promise(resolve => setTimeout(resolve, 1000));
+      }
+    }
+    
+    return clickedAny;
+  }
+
+  // Function to get all consumable items from the page
+  async function getAllConsumableItems() {
+    console.log('Getting all consumable items...');
+    
+    // First, try to get items from the current page if we're on inventory
+    if (window.location.pathname.includes('inventory.php')) {
+      console.log('On inventory page, extracting items from current page...');
+      const currentItems = extractItemDataFromHTML(document.documentElement.outerHTML);
+      
+      if (currentItems.length > 0) {
+        console.log(`Found ${currentItems.length} items on current page`);
+        return currentItems;
+      }
+      
+      // If no items found, try clicking "show more" buttons
+      console.log('No items found, trying to click "show more" buttons...');
+      let hasMoreContent = true;
+      let attempts = 0;
+      const maxAttempts = 3;
+      
+      while (hasMoreContent && attempts < maxAttempts) {
+        attempts++;
+        console.log(`Show more attempt ${attempts}`);
+        
+        hasMoreContent = await autoClickShowMore();
+        
+        if (hasMoreContent) {
+          // Wait for new content to load
+          await new Promise(resolve => setTimeout(resolve, 2000));
+          
+          // Extract items from updated page
+          const newItems = extractItemDataFromHTML(document.documentElement.outerHTML);
+          if (newItems.length > 0) {
+            console.log(`Found ${newItems.length} items after show more`);
+            return newItems;
+          }
+        }
+      }
+    }
+    
+    // If we're not on inventory page or show more didn't work, fetch inventory page
+    console.log('Fetching inventory page via AJAX...');
+    try {
+      const response = await fetch('inventory.php');
+      const html = await response.text();
+      console.log('Fetched inventory HTML length:', html.length);
+      
+      const items = extractItemDataFromHTML(html);
+      console.log(`Found ${items.length} items from fetched inventory`);
+      return items;
+      
+    } catch (error) {
+      console.error('Failed to fetch inventory page:', error);
+      return [];
+    }
+  }
+
+  // Function to find a specific item by name
+  async function findItemByName(itemName) {
+    console.log(`Looking for item: "${itemName}"`);
+    
+    // First, try to get items from the current page if we're on inventory
+    if (window.location.pathname.includes('inventory.php')) {
+      console.log('On inventory page, searching current page...');
+      const currentItems = extractItemDataFromHTML(document.documentElement.outerHTML);
+      
+      // Look for the specific item by name
+      const foundItem = currentItems.find(item => 
+        item.name && item.name.toLowerCase().includes(itemName.toLowerCase())
+      );
+      
+      if (foundItem) {
+        console.log(`Found "${foundItem.name}" on current page`);
+        return foundItem;
+      }
+      
+      // If not found, try clicking "show more" buttons
+      console.log('Item not found, trying to click "show more" buttons...');
+      let hasMoreContent = true;
+      let attempts = 0;
+      const maxAttempts = 3;
+      
+      while (hasMoreContent && attempts < maxAttempts) {
+        attempts++;
+        console.log(`Show more attempt ${attempts}`);
+        
+        hasMoreContent = await autoClickShowMore();
+        
+        if (hasMoreContent) {
+          // Wait for new content to load
+          await new Promise(resolve => setTimeout(resolve, 2000));
+          
+          // Extract items from updated page and search again
+          const newItems = extractItemDataFromHTML(document.documentElement.outerHTML);
+          const foundItem = newItems.find(item => 
+            item.name && item.name.toLowerCase().includes(itemName.toLowerCase())
+          );
+          
+          if (foundItem) {
+            console.log(`Found "${foundItem.name}" after show more`);
+            return foundItem;
+          }
+        }
+      }
+    }
+    
+    // If we're not on inventory page or show more didn't work, fetch inventory page
+    console.log('Fetching inventory page via AJAX...');
+    try {
+      const response = await fetch('inventory.php');
+      const html = await response.text();
+      console.log('Fetched inventory HTML length:', html.length);
+      
+      const items = extractItemDataFromHTML(html);
+      const foundItem = items.find(item => 
+        item.name && item.name.toLowerCase().includes(itemName.toLowerCase())
+      );
+      
+      if (foundItem) {
+        console.log(`Found "${foundItem.name}" from fetched inventory`);
+        return foundItem;
+      } else {
+        console.log(`Item "${itemName}" not found in inventory`);
+        return null;
+      }
+      
+    } catch (error) {
+      console.error('Failed to fetch inventory page:', error);
+      return null;
+    }
+  }
+
+  function initAlternativeInventoryView(){
+    if (!window.location.pathname.includes('inventory.php')) return;
+
+    const header = document.querySelector('h1');
+    if (header) {
+      header.style.cursor = 'pointer';
+      header.title = 'Click to toggle between grid and table view';
+      const viewIndicator = document.createElement('span');
+      viewIndicator.id = 'view-indicator';
+      viewIndicator.style.marginLeft = '10px';
+      viewIndicator.style.fontSize = '14px';
+      viewIndicator.style.color = '#cba6f7';
+      header.appendChild(viewIndicator);
+
+      const savedView = localStorage.getItem('inventoryView') || 'grid';
+      viewIndicator.textContent = `[${savedView.toUpperCase()} VIEW]`;
+
+      if (savedView === 'table') {
+        convertToTableView();
+      }
+
+      header.addEventListener('click', toggleInventoryView);
+    }
+
+    function toggleInventoryView() {
+      const viewIndicator = document.getElementById('view-indicator');
+      const currentView = viewIndicator.textContent.includes('TABLE') ? 'table' : 'grid';
+      const newView = currentView === 'table' ? 'grid' : 'table';
+
+      viewIndicator.textContent = `[${newView.toUpperCase()} VIEW]`;
+      localStorage.setItem('inventoryView', newView);
+
+      if (newView === 'table') {
+        convertToTableView();
+      } else {
+        convertToGridView();
+      }
+    }
+
+    function convertToTableView() {
+      document.querySelectorAll('.inventory-table').forEach(table => table.remove());
+
+      const sections = document.querySelectorAll('.section');
+      sections.forEach(section => {
+        const grid = section.querySelector('.grid');
+
+        if (grid) {
+          grid.style.display = 'none';
+
+          const table = document.createElement('table');
+          table.className = 'inventory-table';
+          table.style.cssText = `
+            width: 100%;
+            border-collapse: collapse;
+            background: rgba(30, 30, 46, 0.8);
+            border-radius: 8px;
+            overflow: hidden;
+            margin-bottom: 20px;
+          `;
+          table.innerHTML = `
+            <thead>
+              <tr style="background: rgba(203, 166, 247, 0.2);">
+                <th style="padding: 12px; text-align: left; border-bottom: 1px solid #585b70;">Item</th>
+                <th style="padding: 12px; text-align: left; border-bottom: 1px solid #585b70;">Details</th>
+                <th style="padding: 12px; text-align: left; border-bottom: 1px solid #585b70;">Actions</th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          `;
+
+          const tbody = table.querySelector('tbody');
+          const items = grid.querySelectorAll('.slot-box');
+          items.forEach(item => {
+            const row = document.createElement('tr');
+            row.style.cssText = 'border-bottom: 1px solid rgba(88, 91, 112, 0.3);';
+
+            const img = item.querySelector('img');
+            const imgSrc = img ? img.src : '';
+            const imgAlt = img ? img.alt : '';
+
+            const label = item.querySelector('.label');
+            const labelText = label ? label.textContent : '';
+
+            const buttons = item.querySelectorAll('button');
+
+            row.innerHTML = `
+              <td class="table-item-image" style="padding: 12px;">
+                <div style="display: flex; align-items: center; gap: 12px;">
+                  <img src="${imgSrc}" alt="${imgAlt}" onerror="this.style.display='none'"
+                       style="width: 40px; height: 40px; border-radius: 4px;">
+                  <div class="table-item-name" style="color: #e0e0e0;">${imgAlt}</div>
+                </div>
+              </td>
+              <td class="table-item-details" style="padding: 12px; color: #cdd6f4;">${labelText}</td>
+              <td class="table-item-actions" style="padding: 12px;"></td>
+            `;
+
+            const actionsCell = row.querySelector('.table-item-actions');
+            buttons.forEach(button => {
+              if (!button.classList.contains('info-btn')) {
+                const buttonClone = button.cloneNode(true);
+                buttonClone.style.marginRight = '8px';
+                actionsCell.appendChild(buttonClone);
+              }
+            });
+
+            const infoBtn = item.querySelector('.info-btn');
+            if (infoBtn) {
+              const infoClone = infoBtn.cloneNode(true);
+              actionsCell.appendChild(infoClone);
+            }
+
+            tbody.appendChild(row);
+          });
+
+          section.insertBefore(table, grid);
+        }
+      });
+    }
+
+    function convertToGridView() {
+      document.querySelectorAll('.inventory-table').forEach(table => table.remove());
+      document.querySelectorAll('.grid').forEach(grid => {
+        grid.style.display = 'flex';
+      });
+    }
+  }
+
+  // Stat allocation section
+  function initStatAllocation() {
+    const statsContainer = document.querySelector('.grid');
+    if (!statsContainer) return;
+
+    const existingSection = document.querySelector('#stat-allocation-section');
+    if (existingSection) existingSection.remove();
+
+    const statAllocationSection = document.createElement('div');
+    statAllocationSection.id = 'stat-allocation-section';
+    statAllocationSection.style.cssText = `
+      background: rgba(30, 30, 46, 0.8);
+      border: 1px solid #585b70;
+      border-radius: 10px;
+      margin: 20px 0;
+      overflow: hidden;
+    `;
+
+    const header = document.createElement('div');
+    header.style.cssText = `
+      padding: 15px 20px;
+      background: rgba(203, 166, 247, 0.1);
+      cursor: pointer;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-weight: bold;
+      color: #cba6f7;
+    `;
+
+    const currentPoints = document.getElementById('v-points')?.textContent || '0';
+    const availablePoints = parseInt(currentPoints);
+
+    header.innerHTML = `
+      <span>📊 Stat Allocation</span>
+      <span id="stat-toggle-icon">${extensionSettings.statAllocationCollapsed ? '[+]' : '[–]'}</span>
+    `;
+
+    const content = document.createElement('div');
+    content.id = 'stat-allocation-content';
+    content.style.cssText = `
+      padding: 20px;
+      display: ${extensionSettings.statAllocationCollapsed ? 'none' : 'block'};
+    `;
+
+    content.innerHTML = `
+      <div style="margin-bottom: 15px; color: #f9e2af; font-weight: bold;">
+        Available Points: ${availablePoints}
+      </div>
+      <div class="stat-row" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; padding: 10px; background: rgba(69, 71, 90, 0.3); border-radius: 8px;">
+        <span style="color: #e0e0e0; min-width: 80px;">Strength:</span>
+        <div style="display: flex; gap: 10px; align-items: center;">
+          <button class="stat-btn" onclick="allocateStatPoints('attack', 1)" ${availablePoints < 1 ? 'disabled' : ''}
+                  style="background: #a6e3a1; color: #1e1e2e; border: none; padding: 5px 10px; border-radius: 5px; cursor: pointer;">+1</button>
+          <button class="stat-btn" onclick="allocateStatPoints('attack', 5)" ${availablePoints < 5 ? 'disabled' : ''}
+                  style="background: #a6e3a1; color: #1e1e2e; border: none; padding: 5px 10px; border-radius: 5px; cursor: pointer;">+5</button>
+        </div>
+      </div>
+      <div class="stat-row" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; padding: 10px; background: rgba(69, 71, 90, 0.3); border-radius: 8px;">
+        <span style="color: #e0e0e0; min-width: 80px;">Agility:</span>
+        <div style="display: flex; gap: 10px; align-items: center;">
+          <button class="stat-btn" onclick="allocateStatPoints('defense', 1)" ${availablePoints < 1 ? 'disabled' : ''}
+                  style="background: #74c0fc; color: #1e1e2e; border: none; padding: 5px 10px; border-radius: 5px; cursor: pointer;">+1</button>
+          <button class="stat-btn" onclick="allocateStatPoints('defense', 5)" ${availablePoints < 5 ? 'disabled' : ''}
+                  style="background: #74c0fc; color: #1e1e2e; border: none; padding: 5px 10px; border-radius: 5px; cursor: pointer;">+5</button>
+        </div>
+      </div>
+      <div class="stat-row" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; padding: 10px; background: rgba(69, 71, 90, 0.3); border-radius: 8px;">
+        <span style="color: #e0e0e0; min-width: 80px;">Dexterity:</span>
+        <div style="display: flex; gap: 10px; align-items: center;">
+          <button class="stat-btn" onclick="allocateStatPoints('stamina', 1)" ${availablePoints < 1 ? 'disabled' : ''}
+                  style="background: #f9e2af; color: #1e1e2e; border: none; padding: 5px 10px; border-radius: 5px; cursor: pointer;">+1</button>
+          <button class="stat-btn" onclick="allocateStatPoints('stamina', 5)" ${availablePoints < 5 ? 'disabled' : ''}
+                  style="background: #f9e2af; color: #1e1e2e; border: none; padding: 5px 10px; border-radius: 5px; cursor: pointer;">+5</button>
+        </div>
+      </div>
+    `;
+
+    statAllocationSection.appendChild(header);
+    statAllocationSection.appendChild(content);
+
+    header.addEventListener('click', function() {
+      const isCollapsed = content.style.display === 'none';
+      content.style.display = isCollapsed ? 'block' : 'none';
+      const toggleIcon = document.getElementById('stat-toggle-icon');
+      if (toggleIcon) {
+        toggleIcon.textContent = isCollapsed ? '[–]' : '[+]';
+      }
+      extensionSettings.statAllocationCollapsed = !isCollapsed;
+      saveSettings();
+    });
+
+    statsContainer.appendChild(statAllocationSection);
+  }
+
+  // Make debug function globally available for troubleshooting
+  window.debugExtension = debugExtension;
+  
+  // Make new functions globally available for testing
+  window.extractItemDataFromHTML = extractItemDataFromHTML;
+  window.autoClickShowMore = autoClickShowMore;
+  window.getAllConsumableItems = getAllConsumableItems;
+  window.findItemByName = findItemByName;
+  
+  // Test function to extract items from current page
+  window.testItemExtraction = async function() {
+    console.log('Testing item extraction from current page...');
+    const items = await getAllConsumableItems();
+    console.log('Extracted items:', items);
+    return items;
+  };
+  
+  // Simple function that just fetches inventory without clicking show more
+  window.getInventoryItemsSimple = async function() {
+    console.log('Fetching inventory items (simple method)...');
+    try {
+      const response = await fetch('inventory.php');
+      const html = await response.text();
+      console.log('Fetched inventory HTML length:', html.length);
+      
+      const items = extractItemDataFromHTML(html);
+      console.log(`Found ${items.length} items from fetched inventory`);
+      return items;
+      
+    } catch (error) {
+      console.error('Failed to fetch inventory page:', error);
+      return [];
+    }
+  };
+
+
+})();
