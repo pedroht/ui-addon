@@ -20,7 +20,9 @@
     merchantExpanded: false,
     inventoryExpanded: false,
     pinnedMerchantItems: [],
-    pinnedInventoryItems: []
+    pinnedInventoryItems: [],
+    multiplePotsEnabled: false,
+    multiplePotsCount: 3
   };
 
   // Page-specific functionality mapping
@@ -718,6 +720,22 @@
         background: #5aa3e0;
       }
 
+      .qa-use-multiple-btn {
+        background: #f9e2af;
+        color: #1e1e2e;
+        border: none;
+        padding: 4px 8px;
+        border-radius: 4px;
+        cursor: pointer;
+        font-size: 10px;
+        font-weight: bold;
+        margin-left: 4px;
+      }
+
+      .qa-use-multiple-btn:hover {
+        background: #e6d196;
+      }
+
       .qa-equip-btn {
         background: #f9e2af;
       }
@@ -1009,6 +1027,22 @@
             </div>
           </div>
 
+          <div class="settings-section">
+            <h3>🍯 Multiple Potion Usage</h3>
+            <p>Enable quick multiple potion usage in inventory quick access:</p>
+            <div style="margin: 15px 0;">
+              <label style="display: flex; align-items: center; gap: 10px; color: #cdd6f4; margin-bottom: 10px;">
+                <input type="checkbox" id="multiple-pots-enabled" style="transform: scale(1.2);">
+                <span>Enable multiple potion usage</span>
+              </label>
+              <div style="display: flex; align-items: center; gap: 10px; color: #cdd6f4;">
+                <label for="multiple-pots-count">Number of potions to use:</label>
+                <input type="number" id="multiple-pots-count" min="2" max="10" value="3" 
+                       style="width: 60px; padding: 5px; background: #1e1e2e; color: #cdd6f4; border: 1px solid #45475a; border-radius: 4px;">
+              </div>
+            </div>
+          </div>
+
           <div style="text-align: center; margin-top: 30px;">
             <button class="settings-button" data-action="close">Close</button>
             <button class="settings-button" data-action="reset">Reset to Default</button>
@@ -1020,6 +1054,7 @@
       document.body.appendChild(modal);
       setupColorSelectors();
       updateColorSelections();
+      setupMultiplePotionSettings();
       setupSettingsModalListeners();
     }
 
@@ -1052,6 +1087,35 @@
         updateColorSelections();
       });
     });
+  }
+
+  function setupMultiplePotionSettings() {
+    const enabledCheckbox = document.getElementById('multiple-pots-enabled');
+    const countInput = document.getElementById('multiple-pots-count');
+    
+    if (enabledCheckbox) {
+      enabledCheckbox.checked = extensionSettings.multiplePotsEnabled;
+      console.log('Multiple pots enabled:', extensionSettings.multiplePotsEnabled);
+      enabledCheckbox.addEventListener('change', (e) => {
+        extensionSettings.multiplePotsEnabled = e.target.checked;
+        console.log('Multiple pots enabled changed to:', extensionSettings.multiplePotsEnabled);
+        saveSettings();
+        updateSidebarInventorySection(); // Refresh to show/hide multiple use buttons
+      });
+    }
+    
+    if (countInput) {
+      countInput.value = extensionSettings.multiplePotsCount;
+      console.log('Multiple pots count:', extensionSettings.multiplePotsCount);
+      countInput.addEventListener('change', (e) => {
+        const value = Math.max(2, Math.min(10, parseInt(e.target.value) || 3));
+        extensionSettings.multiplePotsCount = value;
+        e.target.value = value; // Ensure value is within bounds
+        console.log('Multiple pots count changed to:', extensionSettings.multiplePotsCount);
+        saveSettings();
+        updateSidebarInventorySection(); // Refresh to update button text
+      });
+    }
   }
 
   function setupSettingsModalListeners() {
@@ -1118,7 +1182,9 @@
       merchantExpanded: false,
       inventoryExpanded: false,
       pinnedMerchantItems: [],
-      pinnedInventoryItems: []
+      pinnedInventoryItems: [],
+      multiplePotsEnabled: false,
+      multiplePotsCount: 3
     };
     saveSettings();
     applySettings();
@@ -1148,7 +1214,9 @@
         merchantExpanded: false,
         inventoryExpanded: false,
         pinnedMerchantItems: [],
-        pinnedInventoryItems: []
+        pinnedInventoryItems: [],
+        multiplePotsEnabled: false,
+        multiplePotsCount: 3
       };
       
       // Apply default settings
@@ -1442,70 +1510,79 @@
       showNotification(`Removed "${itemName || 'item'}" from inventory quick access`, 'info');
   }
 
+  // Use website's native useItem function
+  function useNativeItem(invId, itemId, itemName, availableQty, quantity = 1) {
+      console.log(`🍯 Using ${quantity}x ${itemName} (ID: ${invId})`);
+      
+      // Call the website's native useItem function
+      if (typeof useItem === 'function') {
+          useItem(invId, itemId, itemName, availableQty);
+          showNotification(`✅ Used ${quantity}x ${itemName}`, 'success');
+      } else {
+          console.error('Native useItem function not found');
+          showNotification(`❌ Error: Native useItem function not available`, 'error');
+      }
+  }
+
+  // Direct API call to use item (fallback when native function isn't available)
+  async function useItemDirectly(invId, itemName, quantity = 1) {
+      try {
+          console.log(`🍯 Using ${quantity}x ${itemName} directly`);
+          showNotification(`Using ${quantity}x ${itemName}...`, 'info');
+          
+          // Fetch fresh inventory to get current item ID
+          const freshItem = await findItemByName(itemName);
+          if (!freshItem) {
+              showNotification(`❌ No ${itemName} found in inventory`, 'error');
+              return;
+          }
+          
+          console.log(`🍯 Found fresh item: ${freshItem.name} (ID: ${freshItem.itemId})`);
+          
+          const response = await fetch('use_item.php', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+              body: `inv_id=${encodeURIComponent(freshItem.itemId)}${quantity > 1 ? `&qty=${quantity}` : ''}`
+          });
+          
+          const result = await response.text();
+          
+          if (result.includes('successfully') || result.includes('Item consumed') || result.includes('success')) {
+              showNotification(`✅ Used ${quantity}x ${itemName}`, 'success');
+              
+              // Update sidebar quantities
+              setTimeout(() => {
+                  updateSidebarInventorySection();
+                  fetchAndUpdateSidebarStats();
+              }, 500);
+          } else {
+              showNotification(`❌ Failed to use ${itemName}: ${result}`, 'error');
+          }
+      } catch (error) {
+          console.error('Error using item:', error);
+          showNotification(`❌ Error using ${itemName}: ${error.message}`, 'error');
+      }
+  }
+
+
   // UNIVERSAL INVENTORY ACTION - Works from any page
   async function executeInventoryAction(itemData, action) {
       try {
           if (action === 'use' && itemData.type === 'consumable') {
-              // For consumables, fetch fresh inventory data to get current item ID
-              showNotification('Fetching fresh inventory data...', 'info');
+              // Use the website's native useItem function
+              console.log(`Using native useItem for: ${itemData.name}`);
               
-              try {
-                  // Use the new function to find the specific item by name
-                  console.log(`Looking for item: "${itemData.name}"`);
-                  const targetItem = await findItemByName(itemData.name);
-                  
-                  if (!targetItem) {
-                      showNotification(`No usable ${itemData.name} found in inventory`, 'warning');
-                      return;
-                  }
-                  
-                  console.log(`Found target item: ${targetItem.name} (ID: ${targetItem.itemId}, Quantity: ${targetItem.quantity})`);
-                  
-                  // Use the item with the fresh ID
-                  const useResponse = await fetch('use_item.php', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-                      body: `inv_id=${encodeURIComponent(targetItem.itemId)}`
-                  });
-                  
-                  const result = await useResponse.text();
-                  
-                  if (result.includes('successfully') || result.includes('Item consumed')) {
-                      showNotification(`Used ${targetItem.name}! (${targetItem.quantity - 1} remaining)`, 'success');
-                      
-                      // Update the sidebar quantity if it exists
-                      const sidebarItem = document.querySelector(`[data-item-name="${itemData.name}"]`);
-                      if (sidebarItem) {
-                          const quantitySpan = sidebarItem.querySelector('.item-quantity');
-                          if (quantitySpan) {
-                              const newQuantity = Math.max(0, targetItem.quantity - 1);
-                              quantitySpan.textContent = newQuantity > 0 ? `x${newQuantity}` : '';
-                              if (newQuantity === 0) {
-                                  sidebarItem.style.opacity = '0.5';
-                              }
-                          }
-                      }
-                  } else {
-                      showNotification(`Failed to use ${targetItem.name}: ${result}`, 'error');
-                  }
-                      
-                      // Update pinned item quantity
-                      const pinnedItem = extensionSettings.pinnedInventoryItems.find(item => item.name === itemData.name);
-                      if (pinnedItem) {
-                          pinnedItem.quantity = Math.max(0, targetItem.quantity - 1);
-                          saveSettings();
-                      }
-                      
-                      // Refresh displays
-                      setTimeout(() => {
-                          updateSidebarInventorySection();
-                          fetchAndUpdateSidebarStats();
-                      }, 500);
-                  
-              } catch (fetchError) {
-                  console.error('Inventory fetch error:', fetchError);
-                  showNotification('Failed to fetch inventory data', 'error');
+              if (typeof useItem === 'function') {
+                  // Call native useItem with the stored data
+                  useItem(itemData.id, itemData.itemId, itemData.name, itemData.quantity);
+                  showNotification(`✅ Used ${itemData.name}`, 'success');
+              } else {
+                  // Use our own fetch-based approach when native function isn't available
+                  await useItemDirectly(itemData.id, itemData.name, itemData.quantity);
               }
+          } else if (action === 'buy' && itemData.type === 'merchant') {
+              // Handle merchant item buying
+              showNotification(`Visit merchant page to buy ${itemData.name}`, 'info');
               
           } else if (action === 'equip' && itemData.type === 'equipment') {
               showNotification(`Visit inventory page to equip ${itemData.name}`, 'info');
@@ -2757,6 +2834,7 @@
     initAlternativeInventoryView()
     initItemTotalDmg()
     addInventoryQuickAccessButtons()
+    addMultiplePotionButtons()
   }
 
   function initMerchantMods() {
@@ -2972,13 +3050,19 @@
       const inventoryContent = document.getElementById('inventory-expanded');
       if (!inventoryContent) return;
 
+      console.log('Updating sidebar inventory section...');
+      console.log('Multiple pots enabled:', extensionSettings.multiplePotsEnabled);
+      console.log('Multiple pots count:', extensionSettings.multiplePotsCount);
+      console.log('Pinned items:', extensionSettings.pinnedInventoryItems);
+
     let content = '<div class="sidebar-quick-access">';
     
       if (extensionSettings.pinnedInventoryItems.length === 0) {
           content += '<div class="quick-access-empty">No pinned items. Visit inventory to pin items.</div>';
     } else {
           extensionSettings.pinnedInventoryItems.forEach(item => {
-              const displayQuantity = item.quantity > 1 ? ` (x${item.quantity})` : '';
+              // Always show quantity for consumables, even if it's 1
+              const displayQuantity = item.type === 'consumable' ? ` (x${item.quantity || 1})` : '';
               const itemKey = item.type === 'consumable' ? item.name : item.id;
         
         content += `
@@ -2986,14 +3070,21 @@
             <div class="qa-item-header">
                           <img src="${item.image}" alt="${item.name}" style="width: 24px; height: 24px; border-radius: 4px;" onerror="this.style.display='none'">
               <div class="qa-item-info">
-                              <div class="qa-item-name">${item.name}${displayQuantity}</div>
-                              <div class="qa-item-stats">${item.stats}</div>
+                              <div class="qa-item-name">${item.name}</div>
+                              <div class="qa-item-stats">Available: ${item.quantity}</div>
               </div>
                           <button class="qa-remove-btn" data-action="remove">×</button>
             </div>
             <div class="qa-item-actions">
                           ${item.type === 'consumable' && item.quantity > 0 ? 
-                            `<button class="qa-use-btn" data-action="use">Use</button>` :
+                            `<div class="qa-use-controls" style="display: flex; align-items: center; gap: 5px;">
+                              <div class="qty-wrap" style="display: flex; align-items: center; border: 1px solid #45475a; border-radius: 4px; background: #1e1e2e;">
+                                <button type="button" class="qty-btn minus" style="background: #f38ba8; color: white; border: none; padding: 2px 6px; cursor: pointer; border-radius: 3px 0 0 3px;">−</button>
+                                <input type="number" class="qty-input" min="1" max="${item.quantity}" step="1" value="1" style="width: 30px; padding: 2px; background: #1e1e2e; color: #cdd6f4; border: none; text-align: center; font-size: 10px;">
+                                <button type="button" class="qty-btn plus" style="background: #a6e3a1; color: #1e1e2e; border: none; padding: 2px 6px; cursor: pointer; border-radius: 0 3px 3px 0;">+</button>
+                              </div>
+                              <button class="qa-use-btn" data-action="use" style="background: #74c0fc; color: #1e1e2e; border: none; padding: 4px 8px; border-radius: 4px; cursor: pointer; font-size: 10px; font-weight: bold;">Use</button>
+                            </div>` :
                             item.type === 'equipment' ?
                             `<button class="qa-equip-btn" data-action="equip">View</button>` :
                             `<span style="font-size: 11px; color: #888;">Material</span>`
@@ -3074,6 +3165,47 @@
       });
     });
     
+    // Quantity selector listeners
+    const minusButtons = inventoryContent.querySelectorAll('.qty-btn.minus');
+    const plusButtons = inventoryContent.querySelectorAll('.qty-btn.plus');
+    
+    console.log(`Found ${minusButtons.length} minus buttons and ${plusButtons.length} plus buttons`);
+    
+    minusButtons.forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        console.log('Minus button clicked');
+        const input = btn.parentElement.querySelector('.qty-input');
+        if (input) {
+          const currentValue = parseInt(input.value) || 1;
+          const newValue = Math.max(1, currentValue - 1);
+          input.value = newValue;
+          console.log(`Quantity changed from ${currentValue} to ${newValue}`);
+        } else {
+          console.error('Could not find qty-input element');
+        }
+      });
+    });
+
+    plusButtons.forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        console.log('Plus button clicked');
+        const input = btn.parentElement.querySelector('.qty-input');
+        if (input) {
+          const currentValue = parseInt(input.value) || 1;
+          const maxValue = parseInt(input.max) || 1;
+          const newValue = Math.min(maxValue, currentValue + 1);
+          input.value = newValue;
+          console.log(`Quantity changed from ${currentValue} to ${newValue}`);
+        } else {
+          console.error('Could not find qty-input element');
+        }
+      });
+    });
+    
     // Use button listeners
     inventoryContent.querySelectorAll('.qa-use-btn[data-action="use"]').forEach(btn => {
       btn.addEventListener('click', (e) => {
@@ -3083,8 +3215,40 @@
         const itemId = item?.dataset.itemId;
         const itemName = item?.dataset.itemName;
         const itemType = item?.dataset.itemType;
+        const qtyInput = item?.querySelector('.qty-input');
+        const quantity = qtyInput ? parseInt(qtyInput.value) || 1 : 1;
+        
         if (itemId && itemName && itemType) {
-          executeInventoryAction({id: itemId, name: itemName, type: itemType}, 'use');
+          // Use the website's native useItem function if available, otherwise use direct API call
+          if (typeof useItem === 'function') {
+            useItem(itemId, 30, itemName, quantity); // Assuming item type 30 for stamina potions
+            showNotification(`✅ Used ${quantity}x ${itemName}`, 'success');
+          } else {
+            // Use direct API call when native function isn't available
+            useItemDirectly(itemId, itemName, quantity);
+          }
+        }
+      });
+    });
+    
+    // Multiple use button listeners
+    inventoryContent.querySelectorAll('.qa-use-multiple-btn[data-action="use-multiple"]').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        const item = btn.closest('.quick-access-item');
+        const itemId = item?.dataset.itemId;
+        const itemName = item?.dataset.itemName;
+        const itemType = item?.dataset.itemType;
+        if (itemId && itemName && itemType) {
+          // Use the website's native useItem function with default quantity
+          if (typeof useItem === 'function') {
+            useItem(itemId, 30, itemName, extensionSettings.multiplePotsCount || 3);
+            showNotification(`✅ Used ${extensionSettings.multiplePotsCount || 3}x ${itemName}`, 'success');
+          } else {
+            // Use direct API call when native function isn't available
+            useItemDirectly(itemId, itemName, extensionSettings.multiplePotsCount || 3);
+          }
         }
       });
     });
