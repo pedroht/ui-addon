@@ -1,9 +1,9 @@
 (function() {
   'use strict';
 
-  //  all buttons use programmatic listeners
+  // No more global function placeholders needed - all buttons use programmatic listeners
 
-  // Global variables 
+  // Global variables - must be defined before usage
   var alarmInterval = null;
   var monsterFiltersSettings = {"nameFilter":"","hideImg":false, "battleLimitAlarm":false, "battleLimitAlarmSound":true, "battleLimitAlarmVolume":70, "monsterTypeFilter":[], "hpFilter":"", "playerCountFilter":"", "waveFilter":""}
 
@@ -1509,7 +1509,7 @@
       } catch (error) {
         console.error('Error fetching fresh item data:', error);
       }
-    }
+      }
 
     extensionSettings.pinnedInventoryItems.push(itemData);
     saveSettings();
@@ -1590,14 +1590,14 @@
           const freshItem = await findItemByName(itemName);
           if (!freshItem) {
               showNotification(`❌ No ${itemName} found in inventory`, 'error');
-              return;
-          }
-          
+                      return;
+                  }
+                  
           console.log(`🍯 Found fresh item: ${freshItem.name} (ID: ${freshItem.itemId})`);
-          
+                  
           const response = await fetch('use_item.php', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
               body: `inv_id=${encodeURIComponent(freshItem.itemId)}${quantity > 1 ? `&qty=${quantity}` : ''}`
           });
           
@@ -2244,7 +2244,11 @@
   // Play alarm sound function
   function playAlarmSound() {
     try {
-      const audio = new Audio(chrome.runtime.getURL('alarm.mp3'));
+      // Firefox compatibility: try both chrome and browser APIs
+      const audioUrl = (typeof browser !== 'undefined' && browser.runtime) 
+        ? browser.runtime.getURL('alarm.mp3')
+        : chrome.runtime.getURL('alarm.mp3');
+      const audio = new Audio(audioUrl);
       const volumeSlider = document.getElementById('battle-limit-alarm-volume');
       const volume = volumeSlider ? parseInt(volumeSlider.value, 10) / 100 : 0.7;
       audio.volume = volume;
@@ -3576,7 +3580,6 @@
           itemData.itemId = match[1];
         }
       }
-      }
       
       // Extract quantity
       const quantityMatch = slot.textContent.match(/x(\d+)/);
@@ -3605,7 +3608,6 @@
     // Extracted items
     return items;
   }
-
   // Function to automatically click "show more" buttons
   async function autoClickShowMore() {
     const showMoreButtons = document.querySelectorAll('button, a, input[type="button"]');
