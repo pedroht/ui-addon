@@ -1,11 +1,11 @@
 (function() {
   'use strict';
 
-  // No more global function placeholders needed - all buttons use programmatic listeners
+  //  all buttons use programmatic listeners
 
-  // Global variables - must be defined before usage
+  // Global variables 
   var alarmInterval = null;
-  var monsterFiltersSettings = {"nameFilter":"","hideImg":false, "battleLimitAlarm":false, "monsterTypeFilter":[], "hpFilter":"", "playerCountFilter":"", "waveFilter":""}
+  var monsterFiltersSettings = {"nameFilter":"","hideImg":false, "battleLimitAlarm":false, "battleLimitAlarmSound":true, "battleLimitAlarmVolume":70, "monsterTypeFilter":[], "hpFilter":"", "playerCountFilter":"", "waveFilter":""}
 
   // Enhanced settings management
   var extensionSettings = {
@@ -1959,6 +1959,15 @@
       <label style="display: flex; align-items: center; gap: 5px; color: #cdd6f4;">
         <input type="checkbox" id="battle-limit-alarm">
         Battle limit alarm
+        <br>
+        <input type="checkbox" id="battle-limit-alarm-sound" checked>
+        <label for="battle-limit-alarm-sound" style="color: #cdd6f4; font-size: 12px;">🔊 Play alarm sound</label>
+        <br>
+        <div style="display: flex; align-items: center; gap: 5px; margin-top: 5px;">
+          <label for="battle-limit-alarm-volume" style="color: #cdd6f4; font-size: 12px;">Volume:</label>
+          <input type="range" id="battle-limit-alarm-volume" min="10" max="100" value="70" style="width: 80px;">
+          <span id="battle-limit-alarm-volume-display" style="color: #cdd6f4; font-size: 12px; min-width: 30px;">70%</span>
+        </div>
       </label>
         
         <button id="clear-filters" style="padding: 5px 10px; background: #f38ba8; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 12px;">
@@ -1979,7 +1988,29 @@
     document.getElementById('hp-filter').addEventListener('change', applyMonsterFilters);
     document.getElementById('player-count-filter').addEventListener('change', applyMonsterFilters);
     document.getElementById('hide-img-monsters').addEventListener('change', applyMonsterFilters);
-    document.getElementById('battle-limit-alarm').addEventListener('change', applyMonsterFilters);
+    document.getElementById('battle-limit-alarm').addEventListener('change', (e) => {
+      const soundCheckbox = document.getElementById('battle-limit-alarm-sound');
+      if (e.target.checked) {
+        soundCheckbox.checked = true;
+        soundCheckbox.disabled = false;
+      } else {
+        soundCheckbox.checked = false;
+        soundCheckbox.disabled = true;
+      }
+      applyMonsterFilters();
+    });
+    
+    document.getElementById('battle-limit-alarm-sound').addEventListener('change', applyMonsterFilters);
+    
+    // Volume control
+    const volumeSlider = document.getElementById('battle-limit-alarm-volume');
+    const volumeDisplay = document.getElementById('battle-limit-alarm-volume-display');
+    if (volumeSlider && volumeDisplay) {
+      volumeSlider.addEventListener('input', (e) => {
+        volumeDisplay.textContent = e.target.value + '%';
+        applyMonsterFilters();
+      });
+    }
     document.getElementById('clear-filters').addEventListener('click', clearAllFilters);
     
     // Monster type dropdown functionality
@@ -2022,7 +2053,23 @@
     if (settings.hpFilter) document.getElementById('hp-filter').value = settings.hpFilter;
     if (settings.playerCountFilter) document.getElementById('player-count-filter').value = settings.playerCountFilter;
     if (settings.hideImg) document.getElementById('hide-img-monsters').checked = settings.hideImg;
-    if (settings.battleLimitAlarm) document.getElementById('battle-limit-alarm').checked = settings.battleLimitAlarm;
+    if (settings.battleLimitAlarm) {
+      document.getElementById('battle-limit-alarm').checked = settings.battleLimitAlarm;
+      const soundCheckbox = document.getElementById('battle-limit-alarm-sound');
+      if (settings.battleLimitAlarmSound !== undefined) {
+        soundCheckbox.checked = settings.battleLimitAlarmSound;
+      }
+      soundCheckbox.disabled = !settings.battleLimitAlarm;
+      
+      // Set volume
+      const volumeSlider = document.getElementById('battle-limit-alarm-volume');
+      const volumeDisplay = document.getElementById('battle-limit-alarm-volume-display');
+      if (volumeSlider && volumeDisplay) {
+        const volume = settings.battleLimitAlarmVolume || 70;
+        volumeSlider.value = volume;
+        volumeDisplay.textContent = volume + '%';
+      }
+    }
 
     // Initialize monster type checkboxes
     if (settings.monsterTypeFilter && Array.isArray(settings.monsterTypeFilter)) {
@@ -2045,6 +2092,8 @@
     const playerCountFilter = document.getElementById('player-count-filter').value;
     const hideImg = document.getElementById('hide-img-monsters').checked;
     const battleLimitAlarm = document.getElementById('battle-limit-alarm').checked;
+    const battleLimitAlarmSound = document.getElementById('battle-limit-alarm-sound').checked;
+    const battleLimitAlarmVolume = parseInt(document.getElementById('battle-limit-alarm-volume').value, 10);
 
     // Get selected monster types
     const selectedMonsterTypes = Array.from(document.querySelectorAll('.monster-type-checkbox:checked')).map(cb => cb.value);
@@ -2170,6 +2219,11 @@
 
     if (battleLimitAlarm && limitBattleCount < 3) {
       showNotification('🔔 Battle limit alarm: Less than 3 battles!', 'success');
+      
+      // Play alarm sound if enabled
+      if (battleLimitAlarmSound) {
+        playAlarmSound();
+      }
     }
 
     // Save all filter settings
@@ -2180,9 +2234,33 @@
       hpFilter: document.getElementById('hp-filter').value,
       playerCountFilter: document.getElementById('player-count-filter').value,
       hideImg: document.getElementById('hide-img-monsters').checked,
-      battleLimitAlarm: document.getElementById('battle-limit-alarm').checked
+      battleLimitAlarm: document.getElementById('battle-limit-alarm').checked,
+      battleLimitAlarmSound: document.getElementById('battle-limit-alarm-sound').checked,
+      battleLimitAlarmVolume: parseInt(document.getElementById('battle-limit-alarm-volume').value, 10)
     };
     localStorage.setItem('demonGameFilterSettings', JSON.stringify(settings));
+  }
+
+  // Play alarm sound function
+  function playAlarmSound() {
+    try {
+      const audio = new Audio(chrome.runtime.getURL('alarm.mp3'));
+      const volumeSlider = document.getElementById('battle-limit-alarm-volume');
+      const volume = volumeSlider ? parseInt(volumeSlider.value, 10) / 100 : 0.7;
+      audio.volume = volume;
+      audio.play().catch(error => {
+        console.log('Could not play alarm sound:', error);
+        // Fallback: use browser's built-in notification sound
+        if ('Notification' in window && Notification.permission === 'granted') {
+          new Notification('Battle Limit Alarm', {
+            body: 'Less than 3 battles available!',
+            icon: 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><text y=".9em" font-size="90">🔔</text></svg>'
+          });
+        }
+      });
+    } catch (error) {
+      console.log('Error creating alarm sound:', error);
+    }
   }
 
   function getMonsterWave(monsterName) {
@@ -2214,6 +2292,10 @@
     document.getElementById('player-count-filter').value = '';
     document.getElementById('hide-img-monsters').checked = false;
     document.getElementById('battle-limit-alarm').checked = false;
+    document.getElementById('battle-limit-alarm-sound').checked = true;
+    document.getElementById('battle-limit-alarm-sound').disabled = true;
+    document.getElementById('battle-limit-alarm-volume').value = 70;
+    document.getElementById('battle-limit-alarm-volume-display').textContent = '70%';
     
     // Clear all monster type checkboxes
     document.querySelectorAll('.monster-type-checkbox').forEach(checkbox => {
@@ -2890,7 +2972,6 @@
     initAlternativeInventoryView()
     initItemTotalDmg()
     addInventoryQuickAccessButtons()
-    addMultiplePotionButtons()
   }
 
   function initMerchantMods() {
@@ -3483,28 +3564,25 @@
       if (img) {
         itemData.name = img.alt;
         itemData.imageUrl = img.src;
-        console.log(`Slot ${index}: Found item "${itemData.name}"`);
+        // Found item
       }
       
       // Extract item ID from use button
       const useButton = slot.querySelector('button[onclick*="useItem"]');
       if (useButton) {
         const onclickStr = useButton.getAttribute('onclick') || '';
-        console.log(`Slot ${index}: Use button onclick: ${onclickStr}`);
         const match = onclickStr.match(/useItem\(([^)]+)\)/);
         if (match) {
           itemData.itemId = match[1];
-          console.log(`Slot ${index}: Extracted item ID: ${itemData.itemId}`);
         }
-      } else {
-        console.log(`Slot ${index}: No use button found`);
+      }
       }
       
       // Extract quantity
       const quantityMatch = slot.textContent.match(/x(\d+)/);
       if (quantityMatch) {
         itemData.quantity = parseInt(quantityMatch[1], 10);
-        console.log(`Slot ${index}: Quantity: ${itemData.quantity}`);
+        // Quantity found
       } else {
         itemData.quantity = 1;
       }
@@ -3518,13 +3596,13 @@
       // Only add items that have an item ID (usable items)
       if (itemData.itemId) {
         items.push(itemData);
-        console.log(`Slot ${index}: Added item "${itemData.name}" with ID ${itemData.itemId}`);
+        // Added item
       } else {
-        console.log(`Slot ${index}: Skipped item (no item ID)`);
+        // Skipped item (no item ID)
       }
     });
     
-    console.log(`Extracted ${items.length} consumable items total`);
+    // Extracted items
     return items;
   }
 
