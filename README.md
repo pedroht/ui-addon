@@ -1,10 +1,10 @@
 # Demonic Scans Game Enhancement Extension
 
 --- 
-[Installation](#-Installation)
-[Information](#-📝-Quick-Summary)
+[Installation](#Installation)
+[Information](#📝-Quick-Summary)
 
-
+---
 
 ## 📝 Quick Summary
 
