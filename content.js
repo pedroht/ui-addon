@@ -288,7 +288,13 @@
             <button class="expand-btn" id="inventory-expand-btn">${extensionSettings.inventoryExpanded ? '–' : '+'}</button>
           </div>
           <div id="inventory-expanded" class="sidebar-submenu ${extensionSettings.inventoryExpanded ? '' : 'collapsed'}">
-            <div class="coming-soon-text">Visit inventory page to pin items for quick access</div>
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+              <span style="font-size: 12px; color: #888;">Pinned Items</span>
+              <button id="refresh-inventory-btn" style="background: #74c0fc; color: #1e1e2e; border: none; padding: 2px 6px; border-radius: 3px; cursor: pointer; font-size: 10px;">🔄</button>
+            </div>
+            <div class="sidebar-quick-access">
+              <div class="quick-access-empty">No items pinned. Visit inventory page to pin items.</div>
+            </div>
           </div>
         </li>
         <li><a href="achievements.php"><img src="images/menu/compressed_achievments.webp" alt="Achievements"> Achievements</a></li>
@@ -963,6 +969,15 @@
         updateSidebarInventorySection();
       });
 
+      // Refresh inventory button
+      const refreshBtn = document.getElementById('refresh-inventory-btn');
+      if (refreshBtn) {
+        refreshBtn.addEventListener('click', () => {
+          showNotification('Refreshing inventory quantities...', 'info');
+          refreshPinnedItemQuantities();
+        });
+      }
+
       if (extensionSettings.inventoryExpanded) {
         inventoryExpanded.classList.remove('collapsed');
         inventoryExpandBtn.textContent = '–';
@@ -1464,7 +1479,7 @@
       }
   }
 
-  function addToInventoryQuickAccess(itemData, itemElement) {
+  async function addToInventoryQuickAccess(itemData, itemElement) {
     if (extensionSettings.pinnedInventoryItems.length >= 2) {
       showNotification('Maximum 2 inventory items can be pinned!', 'warning');
       return;
@@ -1481,6 +1496,20 @@
           showNotification(`"${itemData.name}" is already pinned!`, 'warning');
           return;
       }
+
+    // For consumables, fetch fresh data to get current quantity
+    if (itemData.type === 'consumable') {
+      try {
+        const freshItem = await findItemByName(itemData.name);
+        if (freshItem) {
+          itemData.quantity = freshItem.quantity;
+          itemData.id = freshItem.itemId; // Update with current ID
+          console.log(`Updated ${itemData.name} quantity to ${freshItem.quantity}`);
+        }
+      } catch (error) {
+        console.error('Error fetching fresh item data:', error);
+      }
+    }
 
     extensionSettings.pinnedInventoryItems.push(itemData);
     saveSettings();
@@ -1508,6 +1537,33 @@
     saveSettings();
     updateSidebarInventorySection();
       showNotification(`Removed "${itemName || 'item'}" from inventory quick access`, 'info');
+  }
+
+  // Refresh quantities for pinned items
+  async function refreshPinnedItemQuantities() {
+    console.log('🔄 Refreshing pinned item quantities...');
+    
+    for (let item of extensionSettings.pinnedInventoryItems) {
+      if (item.type === 'consumable') {
+        try {
+          const freshItem = await findItemByName(item.name);
+          if (freshItem) {
+            const oldQuantity = item.quantity;
+            item.quantity = freshItem.quantity;
+            item.id = freshItem.itemId;
+            console.log(`✅ Refreshed ${item.name}: ${oldQuantity} → ${freshItem.quantity}`);
+          } else {
+            console.log(`❌ Could not find ${item.name} in inventory`);
+          }
+        } catch (error) {
+          console.error(`Error refreshing ${item.name}:`, error);
+        }
+      }
+    }
+    saveSettings();
+    
+    // Update the sidebar display with fresh quantities
+    updateSidebarInventorySection();
   }
 
   // Use website's native useItem function
@@ -3103,6 +3159,11 @@
     
     // Add event listeners for inventory quick access buttons
     setupInventoryQuickAccessListeners();
+    
+    // Refresh quantities for pinned items (only if we have pinned items)
+    if (extensionSettings.pinnedInventoryItems.length > 0) {
+      refreshPinnedItemQuantities();
+    }
   }
 
   function updateSidebarMerchantSection() {
@@ -3560,9 +3621,9 @@
       console.log('On inventory page, searching current page...');
       const currentItems = extractItemDataFromHTML(document.documentElement.outerHTML);
       
-      // Look for the specific item by name
+      // Look for the specific item by exact name match
       const foundItem = currentItems.find(item => 
-        item.name && item.name.toLowerCase().includes(itemName.toLowerCase())
+        item.name && item.name.toLowerCase() === itemName.toLowerCase()
       );
       
       if (foundItem) {
@@ -3589,7 +3650,7 @@
           // Extract items from updated page and search again
           const newItems = extractItemDataFromHTML(document.documentElement.outerHTML);
           const foundItem = newItems.find(item => 
-            item.name && item.name.toLowerCase().includes(itemName.toLowerCase())
+            item.name && item.name.toLowerCase() === itemName.toLowerCase()
           );
           
           if (foundItem) {
@@ -3609,7 +3670,7 @@
       
       const items = extractItemDataFromHTML(html);
       const foundItem = items.find(item => 
-        item.name && item.name.toLowerCase().includes(itemName.toLowerCase())
+        item.name && item.name.toLowerCase() === itemName.toLowerCase()
       );
       
       if (foundItem) {
