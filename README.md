@@ -1,5 +1,11 @@
 # Demonic Scans Game Enhancement Extension
 
+--- 
+[Installation](#-Installation)
+[Information](#-📝-Quick-Summary)
+
+
+
 ## 📝 Quick Summary
 
 **Demon Game Enhancement Extension** - Advanced browser addon featuring multi-criteria monster filtering, sidebar quick access for inventory/merchant items, real-time stats management, instant battle actions, customizable themes, and cross-page automation.
@@ -46,13 +52,31 @@
 - **Stats Management**: Allocate stats from sidebar on any page
 - **Real-time Updates**: Live data synchronization across pages
 
-
 ## 🔧 Advanced Features
 
 - **Multi-Wave Monster Filtering**: Filter by specific waves (Wave 1, Wave 2, All)
 - **Universal Item Actions**: Use consumables, view equipment from any page
 - **Smart Battle Management**: Automatic battle joining and loot collection
 - **Professional Theme System**: 12 sidebar colors × 12 background themes
-- **Cross-Page Stat Allocation**: Upgrade stats without visiting stats page
+
+--- 
+# Installation
+
+## Chromium Based Browsers
+
+- Download the zip file
+- Extract file 
+- Go to Extensions
+- [Turn on developer mode](https://www.youtube.com/watch?v=drNTeGl41ns)
+- Press Load Unpacked and choose the extracted file
+
+## FireFox 
+
+- Download the file
+- Unzip the file
+- Delete the manifest.json file 
+- Go to /firefox subfolder and cut and copy to main folder
+- Go to [temporary extensions page](about:debugging#/runtime/this-firefox) 
+- Pres Load Extension and select the manifest.json
 
 
