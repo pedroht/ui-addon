@@ -1551,9 +1551,10 @@
             const oldQuantity = item.quantity;
             item.quantity = freshItem.quantity;
             item.id = freshItem.itemId;
-            console.log(`✅ Refreshed ${item.name}: ${oldQuantity} → ${freshItem.quantity}`);
-          } else {
-            console.log(`❌ Could not find ${item.name} in inventory`);
+            // Only log if quantity actually changed
+            if (oldQuantity !== freshItem.quantity) {
+              console.log(`✅ Refreshed ${item.name}: ${oldQuantity} → ${freshItem.quantity}`);
+            }
           }
         } catch (error) {
           console.error(`Error refreshing ${item.name}:`, error);
@@ -1561,9 +1562,6 @@
       }
     }
     saveSettings();
-    
-    // Update the sidebar display with fresh quantities
-    updateSidebarInventorySection();
   }
 
   // Use website's native useItem function
@@ -2244,11 +2242,7 @@
   // Play alarm sound function
   function playAlarmSound() {
     try {
-      // Firefox compatibility: try both chrome and browser APIs
-      const audioUrl = (typeof browser !== 'undefined' && browser.runtime) 
-        ? browser.runtime.getURL('alarm.mp3')
-        : chrome.runtime.getURL('alarm.mp3');
-      const audio = new Audio(audioUrl);
+      const audio = new Audio(chrome.runtime.getURL('alarm.mp3'));
       const volumeSlider = document.getElementById('battle-limit-alarm-volume');
       const volume = volumeSlider ? parseInt(volumeSlider.value, 10) / 100 : 0.7;
       audio.volume = volume;
@@ -3191,10 +3185,7 @@
       const inventoryContent = document.getElementById('inventory-expanded');
       if (!inventoryContent) return;
 
-      console.log('Updating sidebar inventory section...');
-      console.log('Multiple pots enabled:', extensionSettings.multiplePotsEnabled);
-      console.log('Multiple pots count:', extensionSettings.multiplePotsCount);
-      console.log('Pinned items:', extensionSettings.pinnedInventoryItems);
+    // Updating sidebar inventory section
 
     let content = '<div class="sidebar-quick-access">';
     
@@ -3245,10 +3236,7 @@
     // Add event listeners for inventory quick access buttons
     setupInventoryQuickAccessListeners();
     
-    // Refresh quantities for pinned items (only if we have pinned items)
-    if (extensionSettings.pinnedInventoryItems.length > 0) {
-      refreshPinnedItemQuantities();
-    }
+    // Note: refreshPinnedItemQuantities() is called separately to avoid infinite loops
   }
 
   function updateSidebarMerchantSection() {
@@ -3315,19 +3303,17 @@
     const minusButtons = inventoryContent.querySelectorAll('.qty-btn.minus');
     const plusButtons = inventoryContent.querySelectorAll('.qty-btn.plus');
     
-    console.log(`Found ${minusButtons.length} minus buttons and ${plusButtons.length} plus buttons`);
+    // Found quantity control buttons
     
     minusButtons.forEach(btn => {
       btn.addEventListener('click', (e) => {
         e.preventDefault();
         e.stopPropagation();
-        console.log('Minus button clicked');
         const input = btn.parentElement.querySelector('.qty-input');
         if (input) {
           const currentValue = parseInt(input.value) || 1;
           const newValue = Math.max(1, currentValue - 1);
           input.value = newValue;
-          console.log(`Quantity changed from ${currentValue} to ${newValue}`);
         } else {
           console.error('Could not find qty-input element');
         }
@@ -3338,14 +3324,12 @@
       btn.addEventListener('click', (e) => {
         e.preventDefault();
         e.stopPropagation();
-        console.log('Plus button clicked');
         const input = btn.parentElement.querySelector('.qty-input');
         if (input) {
           const currentValue = parseInt(input.value) || 1;
           const maxValue = parseInt(input.max) || 1;
           const newValue = Math.min(maxValue, currentValue + 1);
           input.value = newValue;
-          console.log(`Quantity changed from ${currentValue} to ${newValue}`);
         } else {
           console.error('Could not find qty-input element');
         }
@@ -3551,14 +3535,13 @@
 
   // Function to extract item data from HTML structure
   function extractItemDataFromHTML(htmlContent) {
-    console.log('Extracting item data from HTML...');
+    // Extracting item data from HTML
     const parser = new DOMParser();
     const doc = parser.parseFromString(htmlContent, 'text/html');
     const items = [];
     
     // Find all slot-box elements
     const slotBoxes = doc.querySelectorAll('.slot-box');
-    console.log(`Found ${slotBoxes.length} slot-box elements`);
     
     slotBoxes.forEach((slot, index) => {
       const itemData = {};
@@ -3694,25 +3677,44 @@
 
   // Function to find a specific item by name
   async function findItemByName(itemName) {
-    console.log(`Looking for item: "${itemName}"`);
+    // Looking for item
     
     // First, try to get items from the current page if we're on inventory
     if (window.location.pathname.includes('inventory.php')) {
-      console.log('On inventory page, searching current page...');
-      const currentItems = extractItemDataFromHTML(document.documentElement.outerHTML);
+      // On inventory page, search directly in DOM (much faster)
+      const slotBoxes = document.querySelectorAll('.slot-box');
       
-      // Look for the specific item by exact name match
-      const foundItem = currentItems.find(item => 
-        item.name && item.name.toLowerCase() === itemName.toLowerCase()
-      );
-      
-      if (foundItem) {
-        console.log(`Found "${foundItem.name}" on current page`);
-        return foundItem;
+      for (const slot of slotBoxes) {
+        const img = slot.querySelector('img');
+        if (img && img.alt && img.alt.toLowerCase() === itemName.toLowerCase()) {
+          // Found the item, extract its data directly
+          const itemData = {};
+          itemData.name = img.alt;
+          itemData.imageUrl = img.src;
+          
+          // Extract item ID from use button
+          const useButton = slot.querySelector('button[onclick*="useItem"]');
+          if (useButton) {
+            const onclickStr = useButton.getAttribute('onclick') || '';
+            const match = onclickStr.match(/useItem\(([^)]+)\)/);
+            if (match) {
+              itemData.itemId = match[1];
+            }
+          }
+          
+          // Extract quantity
+          const quantityMatch = slot.textContent.match(/x(\d+)/);
+          if (quantityMatch) {
+            itemData.quantity = parseInt(quantityMatch[1], 10);
+          } else {
+            itemData.quantity = 1;
+          }
+          
+          return itemData;
+        }
       }
       
       // If not found, try clicking "show more" buttons
-      console.log('Item not found, trying to click "show more" buttons...');
       let hasMoreContent = true;
       let attempts = 0;
       const maxAttempts = 3;
@@ -3727,15 +3729,36 @@
           // Wait for new content to load
           await new Promise(resolve => setTimeout(resolve, 2000));
           
-          // Extract items from updated page and search again
-          const newItems = extractItemDataFromHTML(document.documentElement.outerHTML);
-          const foundItem = newItems.find(item => 
-            item.name && item.name.toLowerCase() === itemName.toLowerCase()
-          );
-          
-          if (foundItem) {
-            console.log(`Found "${foundItem.name}" after show more`);
-            return foundItem;
+          // Search directly in DOM again (much faster than parsing HTML)
+          const newSlotBoxes = document.querySelectorAll('.slot-box');
+          for (const slot of newSlotBoxes) {
+            const img = slot.querySelector('img');
+            if (img && img.alt && img.alt.toLowerCase() === itemName.toLowerCase()) {
+              // Found the item, extract its data directly
+              const itemData = {};
+              itemData.name = img.alt;
+              itemData.imageUrl = img.src;
+              
+              // Extract item ID from use button
+              const useButton = slot.querySelector('button[onclick*="useItem"]');
+              if (useButton) {
+                const onclickStr = useButton.getAttribute('onclick') || '';
+                const match = onclickStr.match(/useItem\(([^)]+)\)/);
+                if (match) {
+                  itemData.itemId = match[1];
+                }
+              }
+              
+              // Extract quantity
+              const quantityMatch = slot.textContent.match(/x(\d+)/);
+              if (quantityMatch) {
+                itemData.quantity = parseInt(quantityMatch[1], 10);
+              } else {
+                itemData.quantity = 1;
+              }
+              
+              return itemData;
+            }
           }
         }
       }
