@@ -20,7 +20,8 @@
     pinnedMerchantItems: [],
     pinnedInventoryItems: [],
     multiplePotsEnabled: false,
-    multiplePotsCount: 3
+    multiplePotsCount: 3,
+    pinnedItemsLimit: 3
   };
 
   // Page-specific functionality mapping
@@ -33,6 +34,7 @@
     '/pets.php': initPetMods,
     '/stats.php': initStatMods,
     '/pvp.php': initPvPMods,
+    '/pvp_battle.php': initPvPBattleMods,
     '/blacksmith.php': initBlacksmithMods,
     '/merchant.php': initMerchantMods,
     '/orc_cull_event.php': initEventMods,
@@ -1056,6 +1058,17 @@
             </div>
           </div>
 
+          <div class="settings-section">
+            <h3 style="color: #f9e2af; margin-bottom: 15px;">📌 Pinned Items</h3>
+            <div style="margin: 15px 0;">
+              <div style="display: flex; align-items: center; gap: 10px; color: #cdd6f4;">
+                <label for="pinned-items-limit">Maximum pinned items:</label>
+                <input type="number" id="pinned-items-limit" min="1" max="10" value="3" 
+                       style="width: 60px; padding: 5px; background: #1e1e2e; color: #cdd6f4; border: 1px solid #45475a; border-radius: 4px;">
+              </div>
+            </div>
+          </div>
+
           <div style="text-align: center; margin-top: 30px;">
             <button class="settings-button" data-action="close">Close</button>
             <button class="settings-button" data-action="reset">Reset to Default</button>
@@ -1068,6 +1081,7 @@
       setupColorSelectors();
       updateColorSelections();
       setupMultiplePotionSettings();
+      setupPinnedItemsLimitSettings();
       setupSettingsModalListeners();
     }
 
@@ -1127,6 +1141,22 @@
         console.log('Multiple pots count changed to:', extensionSettings.multiplePotsCount);
         saveSettings();
         updateSidebarInventorySection(); // Refresh to update button text
+      });
+    }
+  }
+
+  function setupPinnedItemsLimitSettings() {
+    const limitInput = document.getElementById('pinned-items-limit');
+    
+    if (limitInput) {
+      limitInput.value = extensionSettings.pinnedItemsLimit;
+      console.log('Pinned items limit:', extensionSettings.pinnedItemsLimit);
+      limitInput.addEventListener('change', (e) => {
+        const value = Math.max(1, Math.min(10, parseInt(e.target.value) || 3));
+        extensionSettings.pinnedItemsLimit = value;
+        e.target.value = value; // Ensure value is within bounds
+        console.log('Pinned items limit changed to:', extensionSettings.pinnedItemsLimit);
+        saveSettings();
       });
     }
   }
@@ -1197,7 +1227,8 @@
       pinnedMerchantItems: [],
       pinnedInventoryItems: [],
       multiplePotsEnabled: false,
-      multiplePotsCount: 3
+      multiplePotsCount: 3,
+      pinnedItemsLimit: 3
     };
     saveSettings();
     applySettings();
@@ -1229,7 +1260,8 @@
         pinnedMerchantItems: [],
         pinnedInventoryItems: [],
         multiplePotsEnabled: false,
-        multiplePotsCount: 3
+        multiplePotsCount: 3,
+        pinnedItemsLimit: 3
       };
       
       // Apply default settings
@@ -1478,8 +1510,8 @@
   }
 
   async function addToInventoryQuickAccess(itemData, itemElement) {
-    if (extensionSettings.pinnedInventoryItems.length >= 3) {
-      showNotification('Maximum 3 inventory items can be pinned!', 'warning');
+    if (extensionSettings.pinnedInventoryItems.length >= extensionSettings.pinnedItemsLimit) {
+      showNotification(`Maximum ${extensionSettings.pinnedItemsLimit} inventory items can be pinned!`, 'warning');
       return;
     }
 
@@ -1753,8 +1785,8 @@
   }
 
   function addToMerchantQuickAccess(itemData, cardElement) {
-      if (extensionSettings.pinnedMerchantItems.length >= 3) {
-          showNotification('Maximum 3 merchant items can be pinned!', 'warning');
+      if (extensionSettings.pinnedMerchantItems.length >= extensionSettings.pinnedItemsLimit) {
+          showNotification(`Maximum ${extensionSettings.pinnedItemsLimit} merchant items can be pinned!`, 'warning');
           return;
       }
       
@@ -2951,6 +2983,10 @@
     initPvPBannerFix()
   }
 
+  function initPvPBattleMods(){
+    initAutoSlash()
+  }
+
   function initDashboardTools() {
     console.log("Initializing dashboard tools");
   }
@@ -2980,6 +3016,7 @@
 
   function initPetMods(){
     initPetTotalDmg()
+    initPetRequiredFood()
     showComingSoon('Pets')
   }
 
@@ -2994,6 +3031,72 @@
 
   function initEventMods(){
     initRankingSideBySide()
+  }
+
+  // Auto-slash functionality for PvP battles
+  var autoSlashInterval = null;
+  var autoSlashEnabled = false;
+
+  function initAutoSlash() {
+    console.log('Initializing auto-slash for PvP battles');
+    
+    // Create auto-slash toggle button
+    const attackContainer = document.querySelector('.attack-btn-wrap');
+    if (attackContainer) {
+      const autoSlashBtn = document.createElement('button');
+      autoSlashBtn.id = 'auto-slash-btn';
+      autoSlashBtn.innerHTML = '🤖 Auto Slash';
+      autoSlashBtn.style.cssText = `
+        background: #ff6b6b;
+        color: white;
+        border: none;
+        padding: 8px 12px;
+        margin: 5px;
+        border-radius: 4px;
+        cursor: pointer;
+        font-size: 12px;
+        font-weight: bold;
+      `;
+      
+      autoSlashBtn.addEventListener('click', toggleAutoSlash);
+      attackContainer.appendChild(autoSlashBtn);
+      
+      console.log('Auto-slash button added to PvP battle page');
+    }
+  }
+
+  function toggleAutoSlash() {
+    const btn = document.getElementById('auto-slash-btn');
+    const slashBtn = document.querySelector('.attack-btn[data-skill-id="0"]');
+    
+    if (!slashBtn) {
+      console.log('Slash button not found');
+      return;
+    }
+    
+    if (autoSlashEnabled) {
+      // Stop auto-slash
+      clearInterval(autoSlashInterval);
+      autoSlashInterval = null;
+      autoSlashEnabled = false;
+      btn.innerHTML = '🤖 Auto Slash';
+      btn.style.background = '#ff6b6b';
+      console.log('Auto-slash stopped');
+    } else {
+      // Start auto-slash
+      autoSlashEnabled = true;
+      btn.innerHTML = '⏹️ Stop Auto';
+      btn.style.background = '#4ecdc4';
+      console.log('Auto-slash started');
+      
+      // Start the interval
+      autoSlashInterval = setInterval(() => {
+        if (autoSlashEnabled && slashBtn && !slashBtn.disabled) {
+          console.log('Auto-clicking slash button');
+          slashBtn.click();
+        }
+      }, 1000); // 1 second cooldown
+    }
   }
 
   function initRankingSideBySide(){
@@ -3509,6 +3612,15 @@
     sectionTitle.appendChild(totalDmgContainer);
   }
 
+  function initPetRequiredFood(){
+    document.querySelectorAll('.exp-top').forEach(x => {
+      var curExp = Number.parseInt(x.querySelector('.exp-current').innerText);
+      var reqExp = Number.parseInt(x.querySelector('.exp-required').innerText);
+      var needed = Math.ceil((reqExp - curExp) / 300);
+      x.insertAdjacentHTML('afterEnd', `<div style='margin-top:5px;'><span style='color:green;margin-top:5px'>Requires ${needed} Arcane Treat S</span></div>`);
+    });
+  }
+
   function initItemTotalDmg(){
     const itemSection = document.querySelector('.section');
     const sectionTitle = document.querySelector('.section-title');
@@ -3973,7 +4085,7 @@
         <span style="color: #e0e0e0; min-width: 80px;">Strength:</span>
         <div style="display: flex; gap: 10px; align-items: center;">
           <button class="stat-btn" onclick="allocateStatPoints('attack', 1)" ${availablePoints < 1 ? 'disabled' : ''}
-                  style="background: #a6e3a1; color: #1e1e2e; border: none; padding: 5px 10px; border-radius: 5px; cursor: pointer;">+1</button>
+                  style="background:rgb(6, 6, 6); color: #1e1e2e; border: none; padding: 5px 10px; border-radius: 5px; cursor: pointer;">+1</button>
           <button class="stat-btn" onclick="allocateStatPoints('attack', 5)" ${availablePoints < 5 ? 'disabled' : ''}
                   style="background: #a6e3a1; color: #1e1e2e; border: none; padding: 5px 10px; border-radius: 5px; cursor: pointer;">+5</button>
         </div>
