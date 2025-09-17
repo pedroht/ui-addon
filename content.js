@@ -1,9 +1,7 @@
 (function() {
   'use strict';
 
-  // No more global function placeholders needed - all buttons use programmatic listeners
-
-  // Global variables - must be defined before usage
+  // Global variables
   var alarmInterval = null;
   var monsterFiltersSettings = {"nameFilter":"","hideImg":false, "battleLimitAlarm":false, "battleLimitAlarmSound":true, "battleLimitAlarmVolume":70, "monsterTypeFilter":[], "hpFilter":"", "playerCountFilter":"", "waveFilter":""}
 
@@ -1480,8 +1478,8 @@
   }
 
   async function addToInventoryQuickAccess(itemData, itemElement) {
-    if (extensionSettings.pinnedInventoryItems.length >= 2) {
-      showNotification('Maximum 2 inventory items can be pinned!', 'warning');
+    if (extensionSettings.pinnedInventoryItems.length >= 3) {
+      showNotification('Maximum 3 inventory items can be pinned!', 'warning');
       return;
     }
 
@@ -1755,8 +1753,8 @@
   }
 
   function addToMerchantQuickAccess(itemData, cardElement) {
-      if (extensionSettings.pinnedMerchantItems.length >= 2) {
-          showNotification('Maximum 2 merchant items can be pinned!', 'warning');
+      if (extensionSettings.pinnedMerchantItems.length >= 3) {
+          showNotification('Maximum 3 merchant items can be pinned!', 'warning');
           return;
       }
       
