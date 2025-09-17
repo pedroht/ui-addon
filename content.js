@@ -2593,6 +2593,10 @@
     }
 
     if (lootCards.length > 0) {
+      // Update the loot section header with count
+      const lootHeader = lootSection.querySelector('h3');
+      lootHeader.textContent = `💰 Available Loot (${lootCards.length})`;
+      
       const lootGrid = lootSection.querySelector('.monster-container');
       lootCards.forEach(card => lootGrid.appendChild(card));
       monsterContainer.appendChild(lootSection);
