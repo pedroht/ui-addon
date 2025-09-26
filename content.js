@@ -1,15 +1,16 @@
-(function() {
-  'use strict';
+'use strict';
 
-  // Global variables
+// Global variables
   var alarmInterval = null;
-  var monsterFiltersSettings = {"nameFilter":"","hideImg":false, "battleLimitAlarm":false, "battleLimitAlarmSound":true, "battleLimitAlarmVolume":70, "monsterTypeFilter":[], "hpFilter":"", "playerCountFilter":"", "waveFilter":""}
+  var waveRefreshInterval = null;
+  var monsterFiltersSettings = {"nameFilter":"","hideImg":false, "battleLimitAlarm":false, "battleLimitAlarmSound":true, "battleLimitAlarmVolume":70, "monsterTypeFilter":[], "hpFilter":"", "playerCountFilter":""}
 
   // Enhanced settings management
   var extensionSettings = {
     sidebarColor: '#1e1e2e',
     backgroundColor: '#000000',
     statAllocationCollapsed: true,
+    sidebarCollapsed: false,
     statsExpanded: false,
     petsExpanded: false,
     blacksmithExpanded: false,
@@ -21,7 +22,77 @@
     pinnedInventoryItems: [],
     multiplePotsEnabled: false,
     multiplePotsCount: 3,
-    pinnedItemsLimit: 3
+    pinnedItemsLimit: 3,
+    battlePageHideImages: false,
+    monsterImageOutlineColor: '#ff6b6b',
+    lootCardBorderColor: '#f38ba8',
+    menuCustomizationExpanded: false,
+    monsterBackgrounds: {
+      enabled: true,
+      effect: 'normal', // normal, gradient, blur, pattern
+      overlay: true,
+      overlayOpacity: 0.4,
+      monsters: {
+        'Orc Raider of Grakthar': 'https://raw.githubusercontent.com/asura-cr/ui-addon/refs/heads/main/images/windows_battlefield1.png',
+        'Orc Archer': 'https://raw.githubusercontent.com/asura-cr/ui-addon/refs/heads/main/images/windows_battlefield1.png',
+        'Orc Grunt of Grakthar': 'https://raw.githubusercontent.com/asura-cr/ui-addon/refs/heads/main/images/windows_battlefield1.png',
+        'Orc Berserker': 'https://raw.githubusercontent.com/asura-cr/ui-addon/refs/heads/main/images/windows_battlefield1.png',
+        'Orc Shaman': 'https://raw.githubusercontent.com/asura-cr/ui-addon/refs/heads/main/images/windows_battlefield1.png'
+      } // Will store monster name -> URL mappings
+    },
+    petNames: {
+      enabled: true,
+      names: {} // Will store pet ID -> custom name mappings
+    },
+    lootPanelColors: {
+      enabled: false,
+      unlockedColor: '#4ecdc4', // Color when damage requirement is met
+      lockedColor: '#666666' // Color when locked
+    },
+      lootHighlighting: {
+        enabled: true, // Always enabled by default
+        backgroundColor: 'rgb(0 255 30 / 20%)', // Green background for unlocked loot
+        glowColor: 'rgba(255, 215, 0, 0.6)' // Golden glow effect
+      },
+      customBackgrounds: {
+        enabled: true,
+        backgrounds: {
+          '/pets.php': 'https://raw.githubusercontent.com/asura-cr/ui-addon/refs/heads/main/images/pets.png',
+          '/inventory.php': 'https://raw.githubusercontent.com/asura-cr/ui-addon/refs/heads/main/images/inventory.png',
+          '/merchant.php': 'https://raw.githubusercontent.com/asura-cr/ui-addon/refs/heads/main/images/merchant.png',
+          '/blacksmith.php': 'https://raw.githubusercontent.com/asura-cr/ui-addon/refs/heads/main/images/blacksmith.png'
+        }
+    },
+    waveAutoRefresh: {
+      enabled: false,
+      interval: 10 // seconds
+    },
+    pvpAutoSurrender: {
+      enabled: false,
+      surrenderThreshold: 0.2, // Surrender when win probability drops below 20%
+      showPrediction: true, // Always show win/loss prediction box
+      analyzeAfterAttacks: 2 // Start analysis after this many attacks
+    },
+    menuItems: [
+      { id: 'pvp', name: 'PvP Arena', visible: true, order: 0 },
+      { id: 'orc_cull', name: 'War Drums of GRAKTHAR', visible: true, order: 1 },
+      { id: 'event_battlefield', name: 'Event Battlefield', visible: true, order: 2 },
+      { id: 'gate_grakthar', name: 'Gate Grakthar', visible: true, order: 3 },
+      { id: 'inventory', name: 'Inventory & Equipment', visible: true, order: 4 },
+      { id: 'pets', name: 'Pets & Eggs', visible: true, order: 5 },
+      { id: 'stats', name: 'Stats', visible: true, order: 6 },
+      { id: 'blacksmith', name: 'Blacksmith', visible: true, order: 7 },
+      { id: 'merchant', name: 'Merchant', visible: true, order: 8 },
+      { id: 'inventory_quick', name: 'Inventory Quick Access', visible: true, order: 9 },
+      { id: 'achievements', name: 'Achievements', visible: true, order: 10 },
+      { id: 'collections', name: 'Collections', visible: true, order: 11 },
+      { id: 'guide', name: 'How To Play', visible: true, order: 12 },
+      { id: 'leaderboard', name: 'Weekly Leaderboard', visible: true, order: 13 },
+      { id: 'chat', name: 'Global Chat', visible: true, order: 14 },
+      { id: 'patches', name: 'Patch Notes', visible: true, order: 15 },
+      { id: 'manga', name: 'Manga-Manhwa-Manhua', visible: true, order: 16 },
+      { id: 'settings', name: 'Settings', visible: true, order: 17 }
+    ]
   };
 
   // Page-specific functionality mapping
@@ -34,7 +105,7 @@
     '/pets.php': initPetMods,
     '/stats.php': initStatMods,
     '/pvp.php': initPvPMods,
-    '/pvp_battle.php': initPvPBattleMods,
+    '/pvp_battle.php': [initPvPBattleMods, initPvPMods], // Run both handlers for PvP battle
     '/blacksmith.php': initBlacksmithMods,
     '/merchant.php': initMerchantMods,
     '/orc_cull_event.php': initEventMods,
@@ -48,9 +119,6 @@
   }
 
   const userId = getCookieExtension('demon');
-  if(!userId){
-    console.log('Not logged in')
-  }
 
   function initDraggableFalse(){
     document.querySelectorAll('a').forEach(x => x.draggable = false);
@@ -61,14 +129,294 @@
   function loadSettings() {
     const saved = localStorage.getItem('demonGameExtensionSettings');
     if (saved) {
-      extensionSettings = { ...extensionSettings, ...JSON.parse(saved) };
+      const savedSettings = JSON.parse(saved);
+      // Deep merge settings
+      extensionSettings = {
+        ...extensionSettings,
+        ...savedSettings,
+        monsterBackgrounds: {
+          ...extensionSettings.monsterBackgrounds,
+          ...savedSettings.monsterBackgrounds,
+          monsters: {
+            ...extensionSettings.monsterBackgrounds?.monsters,
+            ...savedSettings.monsterBackgrounds?.monsters,
+          }
+        },
+        petNames: {
+          ...extensionSettings.petNames,
+          ...savedSettings.petNames,
+          names: {
+            ...extensionSettings.petNames?.names,
+            ...savedSettings.petNames?.names,
+          }
+        },
+          lootPanelColors: {
+            ...extensionSettings.lootPanelColors,
+            ...savedSettings.lootPanelColors,
+          },
+          lootHighlighting: {
+            ...extensionSettings.lootHighlighting,
+            ...savedSettings.lootHighlighting,
+          },
+          waveAutoRefresh: {
+            ...extensionSettings.waveAutoRefresh,
+            ...savedSettings.waveAutoRefresh,
+          },
+          pvpAutoSurrender: {
+            ...extensionSettings.pvpAutoSurrender,
+            ...savedSettings.pvpAutoSurrender,
+          },
+          customBackgrounds: {
+            ...extensionSettings.customBackgrounds,
+            ...savedSettings.customBackgrounds,
+            backgrounds: {
+              ...extensionSettings.customBackgrounds?.backgrounds,
+              ...savedSettings.customBackgrounds?.backgrounds,
+          }
+        },
+      };
     }
+    
+    // Ensure menu customization settings exist
+    if (!extensionSettings.menuCustomizationExpanded) {
+      extensionSettings.menuCustomizationExpanded = false;
+    }
+    if (!extensionSettings.menuItems || !Array.isArray(extensionSettings.menuItems)) {
+      extensionSettings.menuItems = [
+        { id: 'pvp', name: 'PvP Arena', visible: true, order: 0 },
+        { id: 'orc_cull', name: 'War Drums of GRAKTHAR', visible: true, order: 1 },
+        { id: 'event_battlefield', name: 'Event Battlefield', visible: true, order: 2 },
+        { id: 'gate_grakthar', name: 'Gate Grakthar', visible: true, order: 3 },
+        { id: 'inventory', name: 'Inventory & Equipment', visible: true, order: 4 },
+        { id: 'pets', name: 'Pets & Eggs', visible: true, order: 5 },
+        { id: 'stats', name: 'Stats', visible: true, order: 6 },
+        { id: 'blacksmith', name: 'Blacksmith', visible: true, order: 7 },
+        { id: 'merchant', name: 'Merchant', visible: true, order: 8 },
+        { id: 'inventory_quick', name: 'Inventory Quick Access', visible: true, order: 9 },
+        { id: 'achievements', name: 'Achievements', visible: true, order: 10 },
+        { id: 'collections', name: 'Collections', visible: true, order: 11 },
+        { id: 'guide', name: 'How To Play', visible: true, order: 12 },
+        { id: 'leaderboard', name: 'Weekly Leaderboard', visible: true, order: 13 },
+        { id: 'chat', name: 'Global Chat', visible: true, order: 14 },
+        { id: 'patches', name: 'Patch Notes', visible: true, order: 15 },
+        { id: 'manga', name: 'Manga-Manhwa-Manhua', visible: true, order: 16 },
+        { id: 'settings', name: 'Settings', visible: true, order: 17 }
+      ];
+    }
+
+    // Ensure background image settings exist
+    if (!extensionSettings.backgroundImages) {
+      extensionSettings.backgroundImages = {
+        enabled: true,
+        pets: {
+          url: 'https://i.ibb.co/23tNJmW6/image.png',
+          effect: 'normal'
+        },
+        inventory: {
+          url: 'https://i.ibb.co/mr5x6Ln8/image.png',
+          effect: 'normal'
+        },
+        merchant: {
+          url: 'https://i.ibb.co/WNLDCLGg/image.png',
+          effect: 'normal'
+        },
+        blacksmith: {
+          url: 'https://i.ibb.co/3ygpXwHW/image.png',
+          effect: 'normal'
+        }
+      };
+    }
+    
+    // Ensure monster background settings exist
+    if (!extensionSettings.monsterBackgrounds) {
+      extensionSettings.monsterBackgrounds = {
+        effect: 'normal',
+        overlay: true,
+        overlayOpacity: 0.5,
+        monsters: {}
+      };
+    }
+    
     applySettings();
+      applyCustomBackgrounds();
+    applyMonsterBackgrounds();
   }
 
   function saveSettings() {
-    localStorage.setItem('demonGameExtensionSettings', JSON.stringify(extensionSettings));
+    // Ensure required objects exist before saving
+    if (!extensionSettings.monsterBackgrounds) {
+      extensionSettings.monsterBackgrounds = {
+        enabled: false,
+        effect: 'normal',
+        overlay: true,
+        overlayOpacity: 0.4,
+        monsters: {}
+      };
+    }
+    if (!extensionSettings.monsterBackgrounds.monsters) {
+      extensionSettings.monsterBackgrounds.monsters = {};
+    }
+      
+      // Ensure customBackgrounds object exists
+      if (!extensionSettings.customBackgrounds) {
+        extensionSettings.customBackgrounds = {
+          enabled: true,
+          backgrounds: {}
+        };
+      }
+      if (!extensionSettings.customBackgrounds.backgrounds) {
+        extensionSettings.customBackgrounds.backgrounds = {};
+    }
+
+    // Deep clone settings to ensure all nested objects are properly saved
+    const settingsToSave = JSON.parse(JSON.stringify({
+      ...extensionSettings,
+      monsterBackgrounds: {
+        ...extensionSettings.monsterBackgrounds,
+        monsters: { ...extensionSettings.monsterBackgrounds.monsters }
+        },
+        customBackgrounds: {
+          ...extensionSettings.customBackgrounds,
+          backgrounds: { ...extensionSettings.customBackgrounds.backgrounds }
+      }
+    }));
+    localStorage.setItem('demonGameExtensionSettings', JSON.stringify(settingsToSave));
   }
+
+
+    function applyBackgroundToPanels(panels, bgConfig) {
+      panels.forEach(panel => {
+        // Skip if background already applied
+        if (panel.getAttribute('data-bg-applied') === 'true') {
+      return;
+    }
+
+        // Make sure panel has relative positioning
+        panel.style.position = 'relative';
+        panel.style.overflow = 'hidden';
+        
+        // Apply background directly
+        panel.style.backgroundImage = `url(${bgConfig.url})`;
+        panel.style.backgroundSize = 'cover';
+        panel.style.backgroundPosition = 'center';
+        panel.style.backgroundRepeat = 'no-repeat';
+
+        // Remove any existing overlay
+        const existingOverlay = panel.querySelector('.bg-overlay');
+        if (existingOverlay) existingOverlay.remove();
+
+        // Create new overlay
+        const overlay = document.createElement('div');
+        overlay.className = 'bg-overlay';
+        
+        // Apply effect-specific styles
+        switch (bgConfig.effect) {
+          case 'blur':
+            overlay.style.cssText = `
+              position: absolute;
+              top: -10px;
+              left: -10px;
+              right: -10px;
+              bottom: -10px;
+              background-image: inherit;
+              background-size: inherit;
+              background-position: inherit;
+              filter: blur(3px);
+              z-index: 0;
+            `;
+            break;
+            
+          case 'gradient':
+            overlay.style.cssText = `
+              position: absolute;
+              top: 0;
+              left: 0;
+              right: 0;
+              bottom: 0;
+              background: linear-gradient(rgba(0, 0, 0, 0.6), rgba(0, 0, 0, 0.3));
+              z-index: 0;
+            `;
+            break;
+            
+          case 'pattern':
+            overlay.style.cssText = `
+              position: absolute;
+              top: 0;
+              left: 0;
+              right: 0;
+              bottom: 0;
+              background-image: repeating-linear-gradient(
+                45deg,
+                rgba(0, 0, 0, 0.1),
+                rgba(0, 0, 0, 0.1) 10px,
+                rgba(0, 0, 0, 0.2) 10px,
+                rgba(0, 0, 0, 0.2) 20px
+              );
+              z-index: 0;
+            `;
+            break;
+            
+          default: // normal
+            overlay.style.cssText = `
+              position: absolute;
+              top: 0;
+              left: 0;
+              right: 0;
+              bottom: 0;
+              background: rgba(0, 0, 0, 0.4);
+              z-index: 0;
+            `;
+        }
+
+        // Add overlay to panel
+        panel.appendChild(overlay);
+
+        // Ensure panel content is above overlay
+        Array.from(panel.children).forEach(child => {
+          if (!child.classList.contains('bg-overlay')) {
+            child.style.position = 'relative';
+            child.style.zIndex = '1';
+          }
+        });
+        
+        // Mark panel as having background applied
+        panel.setAttribute('data-bg-applied', 'true');
+        });
+    }
+
+    function applyCustomBackgrounds() {
+      if (!extensionSettings.customBackgrounds?.enabled) {
+        document.documentElement.style.setProperty('--page-bg-image', 'none');
+        // Remove any existing background from body
+        document.body.style.backgroundImage = '';
+        document.body.style.backgroundSize = '';
+        document.body.style.backgroundPosition = '';
+        document.body.style.backgroundRepeat = '';
+        document.body.style.backgroundAttachment = '';
+        return;
+      }
+
+      const currentPage = window.location.pathname;
+      const customBg = extensionSettings.customBackgrounds.backgrounds[currentPage];
+      
+      if (customBg) {
+        document.documentElement.style.setProperty('--page-bg-image', `url('${customBg}')`);
+        // Also apply directly to body to override inline styles
+        document.body.style.backgroundImage = `url('${customBg}')`;
+        document.body.style.backgroundSize = 'cover';
+        document.body.style.backgroundPosition = 'center';
+        document.body.style.backgroundRepeat = 'no-repeat';
+        document.body.style.backgroundAttachment = 'fixed';
+      } else {
+        document.documentElement.style.setProperty('--page-bg-image', 'none');
+        // Remove any existing background from body
+        document.body.style.backgroundImage = '';
+        document.body.style.backgroundSize = '';
+        document.body.style.backgroundPosition = '';
+        document.body.style.backgroundRepeat = '';
+        document.body.style.backgroundAttachment = '';
+      }
+    }
 
   function applySettings() {
     const sidebar = document.getElementById('game-sidebar');
@@ -76,6 +424,13 @@
       sidebar.style.background = extensionSettings.sidebarColor;
     }
     document.body.style.backgroundColor = extensionSettings.backgroundColor;
+    
+    // Apply color settings to CSS variables
+    document.documentElement.style.setProperty('--monster-image-outline-color', extensionSettings.monsterImageOutlineColor);
+    document.documentElement.style.setProperty('--loot-card-border-color', extensionSettings.lootCardBorderColor);
+      
+      // Apply background images
+      applyCustomBackgrounds();
   }
 
   // Function to update sidebar stats
@@ -154,7 +509,6 @@
           
           if (response.ok) {
             const text = await response.text();
-            console.log('Stats response:', text); // Debug log
             
             try {
               const data = JSON.parse(text);
@@ -163,14 +517,13 @@
                 defense = data.user.DEFENSE || data.user.defense || defense || '-';
                 stamina = data.user.STAMINA || data.user.MAX_STAMINA || data.user.stamina || stamina || '-';
                 points = data.user.STAT_POINTS || data.user.stat_points || points || '-';
-                console.log('Parsed stats:', { attack, defense, stamina, points });
               }
             } catch (parseError) {
-              console.log('JSON parse error:', parseError, 'Response was:', text);
+              // Silent error handling
             }
           }
         } catch (ajaxError) {
-          console.log('AJAX stats fetch failed:', ajaxError);
+          // Silent error handling
         }
       }
 
@@ -181,7 +534,6 @@
         STAT_POINTS: points || '-'
       });
     } catch (error) {
-      console.log('Could not fetch stats:', error);
       updateSidebarStats({
         ATTACK: '-',
         DEFENSE: '-',
@@ -191,24 +543,34 @@
     }
   }
 
-  function initSideBar(){
-    const noContainerPage = !document.querySelector('.container') && !document.querySelector('.wrap');
-    const mainWrapper = document.createElement('div');
-    mainWrapper.className = 'main-wrapper';
-
-    const sidebar = document.createElement('aside');
-    sidebar.id = 'game-sidebar';
-    sidebar.innerHTML = `
-      <div class="sidebar-header">
-        <a href="game_dash.php" style="text-decoration:none;"><h2>Game Menu</h2></a>
-      </div>
-
-      <ul class="sidebar-menu">
-        <li><a href="pvp.php"><img src="/images/pvp/season_1/compressed_menu_pvp_season_1.webp" alt="PvP Arena"> PvP Arena</a></li>
-        <li><a href="orc_cull_event.php"><img src="/images/events/orc_cull/banner.webp" alt="Goblin Feast"> 🪓 ⚔️ War Drums of GRAKTHAR</a></li>
-        <li><a href="active_wave.php?event=2&wave=6" draggable="false"><img src="/images/events/orc_cull/banner.webp" alt="War Drums of GRAKTHAR"> Event Battlefield</a></li>
-        <li><a href="active_wave.php?gate=3&wave=3"><img src="images/gates/gate_688e438aba7f24.99262397.webp" alt="Gate"> Gate Grakthar</a></li>
-        <li><a href="inventory.php"><img src="images/menu/compressed_chest.webp" alt="Inventory"> Inventory & Equipment</a></li>
+  // Function to generate menu items based on customization settings
+  function generateMenuItems() {
+    // Sort menu items by order and filter visible ones
+    const sortedItems = [...extensionSettings.menuItems]
+      .sort((a, b) => a.order - b.order)
+      .filter(item => item.visible);
+    
+    let menuHTML = '';
+    
+    sortedItems.forEach(item => {
+      switch(item.id) {
+        case 'pvp':
+          menuHTML += `<li><a href="pvp.php"><img src="/images/pvp/season_1/compressed_menu_pvp_season_1.webp" alt="PvP Arena"> PvP Arena</a></li>`;
+          break;
+        case 'orc_cull':
+          menuHTML += `<li><a href="orc_cull_event.php"><img src="/images/events/orc_cull/banner.webp" alt="Goblin Feast"> 🪓 ⚔️ War Drums of GRAKTHAR</a></li>`;
+          break;
+        case 'event_battlefield':
+          menuHTML += `<li><a href="active_wave.php?event=2&wave=6" draggable="false"><img src="/images/events/orc_cull/banner.webp" alt="War Drums of GRAKTHAR"> Event Battlefield</a></li>`;
+          break;
+        case 'gate_grakthar':
+          menuHTML += `<li><a href="active_wave.php?gate=3&wave=3"><img src="images/gates/gate_688e438aba7f24.99262397.webp" alt="Gate"> Gate Grakthar</a></li>`;
+          break;
+        case 'inventory':
+          menuHTML += `<li><a href="inventory.php"><img src="images/menu/compressed_chest.webp" alt="Inventory"> Inventory & Equipment</a></li>`;
+          break;
+        case 'pets':
+          menuHTML += `
         <li>
           <div class="sidebar-menu-expandable">
             <a href="pets.php"><img src="images/menu/compressed_eggs_menu.webp" alt="Pets"> Pets & Eggs</a>
@@ -217,7 +579,10 @@
           <div id="pets-expanded" class="sidebar-submenu collapsed">
             <div class="coming-soon-text">🚧 Working on it / Coming Soon</div>
           </div>
-        </li>
+            </li>`;
+          break;
+        case 'stats':
+          menuHTML += `
         <li>
           <div class="sidebar-menu-expandable">
             <a href="stats.php" draggable="false">
@@ -259,11 +624,16 @@
                     <button class="upgrade-btn" draggable="false">+5</button>
                   </div>
                 </div>
-                <div class="upgrade-note">Points Available: <span id="sidebar-points-alloc">-</span></div>
               </div>
+                  <div style="text-align: center; margin-top: 8px; color: #888;">
+                    Points Available: <span id="sidebar-points-available">-</span>
             </div>
           </div>
-        </li>
+              </div>
+            </li>`;
+          break;
+        case 'blacksmith':
+          menuHTML += `
         <li>
           <div class="sidebar-menu-expandable">
             <a href="blacksmith.php"><img src="images/menu/compressed_crafting.webp" alt="Blacksmith"> Blacksmith</a>
@@ -272,39 +642,90 @@
           <div id="blacksmith-expanded" class="sidebar-submenu collapsed">
             <div class="coming-soon-text">🚧 Working on it / Coming Soon</div>
           </div>
-        </li>
+            </li>`;
+          break;
+        case 'merchant':
+          menuHTML += `
         <li>
           <div class="sidebar-menu-expandable">
             <a href="merchant.php"><img src="images/menu/compressed_merchant.webp" alt="Merchant"> Merchant</a>
-            <button class="expand-btn" id="merchant-expand-btn">${extensionSettings.merchantExpanded ? '–' : '+'}</button>
+                <button class="expand-btn" id="merchant-expand-btn">+</button>
           </div>
           <div id="merchant-expanded" class="sidebar-submenu ${extensionSettings.merchantExpanded ? '' : 'collapsed'}">
-            <div class="coming-soon-text">Visit merchant page to pin items for quick access</div>
+                <div class="quick-access-section">
+                  <div class="quick-access-header">
+                    <span>Quick Access Items</span>
+                    <button class="refresh-btn" id="merchant-refresh-btn" title="Refresh Merchant Items">🔄</button>
           </div>
-        </li>
+                  <div id="merchant-quick-access" class="quick-access-items">
+                    <div class="quick-access-empty">No pinned items. Visit merchant to pin items.</div>
+                  </div>
+                </div>
+              </div>
+            </li>`;
+          break;
+        case 'inventory_quick':
+          menuHTML += `
         <li>
           <div class="sidebar-menu-expandable">
             <a href="inventory.php"><img src="images/menu/compressed_chest.webp" alt="Inventory"> Inventory Quick Access</a>
-            <button class="expand-btn" id="inventory-expand-btn">${extensionSettings.inventoryExpanded ? '–' : '+'}</button>
+                <button class="expand-btn" id="inventory-expand-btn">+</button>
           </div>
           <div id="inventory-expanded" class="sidebar-submenu ${extensionSettings.inventoryExpanded ? '' : 'collapsed'}">
-            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
-              <span style="font-size: 12px; color: #888;">Pinned Items</span>
-              <button id="refresh-inventory-btn" style="background: #74c0fc; color: #1e1e2e; border: none; padding: 2px 6px; border-radius: 3px; cursor: pointer; font-size: 10px;">🔄</button>
-            </div>
-            <div class="sidebar-quick-access">
-              <div class="quick-access-empty">No items pinned. Visit inventory page to pin items.</div>
-            </div>
+                <div class="quick-access-section">
+                  <div class="quick-access-header">
+                    <span>Quick Access Items</span>
+                    <button class="refresh-btn" id="inventory-refresh-btn" title="Refresh Inventory Items">🔄</button>
           </div>
-        </li>
-        <li><a href="achievements.php"><img src="images/menu/compressed_achievments.webp" alt="Achievements"> Achievements</a></li>
-        <li><a href="collections.php"><img src="images/menu/compressed_collections.webp" alt="Collections"> Collections</a></li>
-        <li><a href="guide.php"><img src="images/menu/compressed_guide.webp" alt="Guide"> How To Play</a></li>
-        <li><a href="weekly.php"><img src="images/menu/weekly_leaderboard.webp" alt="Leaderboard"> Weekly Leaderboard</a></li>
-        <li><a href="chat.php"><img src="images/menu/compressed_chat.webp" alt="Chat"> Global Chat</a></li>
-        <li><a href="patches.php"><img src="images/menu/compressed_patches.webp" alt="PatchNotes"> Patch Notes</a></li>
-        <li><a href="index.php"><img src="images/menu/compressed_manga.webp" alt="Manga"> Manga-Manhwa-Manhua</a></li>
-        <li><a href="#" id="settings-link"><img src="images/menu/compressed_stats_menu.webp" alt="Settings"> ⚙️ Settings</a></li>
+                  <div id="inventory-quick-access" class="quick-access-items">
+                    <div class="quick-access-empty">No pinned items. Visit inventory to pin items.</div>
+                  </div>
+                </div>
+              </div>
+            </li>`;
+          break;
+        case 'achievements':
+          menuHTML += `<li><a href="achievements.php"><img src="images/menu/compressed_achievments.webp" alt="Achievements"> Achievements</a></li>`;
+          break;
+        case 'collections':
+          menuHTML += `<li><a href="collections.php"><img src="images/menu/compressed_collections.webp" alt="Collections"> Collections</a></li>`;
+          break;
+        case 'guide':
+          menuHTML += `<li><a href="guide.php"><img src="images/menu/compressed_guide.webp" alt="Guide"> How To Play</a></li>`;
+          break;
+        case 'leaderboard':
+          menuHTML += `<li><a href="weekly.php"><img src="images/menu/weekly_leaderboard.webp" alt="Leaderboard"> Weekly Leaderboard</a></li>`;
+          break;
+        case 'chat':
+          menuHTML += `<li><a href="chat.php"><img src="images/menu/compressed_chat.webp" alt="Chat"> Global Chat</a></li>`;
+          break;
+        case 'patches':
+          menuHTML += `<li><a href="patches.php"><img src="images/menu/compressed_patches.webp" alt="PatchNotes"> Patch Notes</a></li>`;
+          break;
+        case 'manga':
+          menuHTML += `<li><a href="index.php"><img src="images/menu/compressed_manga.webp" alt="Manga"> Manga-Manhwa-Manhua</a></li>`;
+          break;
+      }
+    });
+    
+    return menuHTML;
+  }
+
+  function initSideBar(){
+    const noContainerPage = !document.querySelector('.container') && !document.querySelector('.wrap');
+    const mainWrapper = document.createElement('div');
+    mainWrapper.className = 'main-wrapper';
+
+    const sidebar = document.createElement('aside');
+    sidebar.id = 'game-sidebar';
+    sidebar.innerHTML = `
+      <div class="sidebar-header">
+        <a href="game_dash.php" style="text-decoration:none;"><h2>Game Menu</h2></a>
+        <button class="sidebar-toggle-btn" id="sidebar-toggle-btn" title="Toggle Sidebar">☰</button>
+      </div>
+
+      <ul class="sidebar-menu">
+        ${generateMenuItems()}
       </ul>
     `;
 
@@ -328,6 +749,7 @@
       }
     }
 
+    // Append sidebar to main wrapper
     mainWrapper.appendChild(sidebar);
     mainWrapper.appendChild(contentArea);
     document.body.appendChild(mainWrapper);
@@ -338,6 +760,283 @@
 
     const style = document.createElement('style');
     style.textContent = `
+      /* Neo Toggle Switch Styles */
+      .neo-toggle-container {
+        --toggle-width: 50px;
+        --toggle-height: 24px;
+        --toggle-bg: #181c20;
+        --toggle-off-color: #475057;
+        --toggle-on-color: #36f9c7;
+        --toggle-transition: 0.4s cubic-bezier(0.25, 1, 0.5, 1);
+
+        position: relative;
+        display: inline-flex;
+        flex-direction: column;
+        font-family: "Segoe UI", Tahoma, sans-serif;
+        user-select: none;
+        margin: 0 0 0 10px;
+        vertical-align: middle;
+      }
+
+      .neo-toggle-input {
+        position: absolute;
+        opacity: 0;
+        width: 0;
+        height: 0;
+      }
+
+      .neo-toggle {
+        position: relative;
+        width: var(--toggle-width);
+        height: var(--toggle-height);
+        display: block;
+        cursor: pointer;
+        transform: translateZ(0);
+        perspective: 500px;
+      }
+
+      .neo-track {
+        position: absolute;
+        inset: 0;
+        border-radius: calc(var(--toggle-height) / 2);
+        overflow: hidden;
+        transform-style: preserve-3d;
+        transform: translateZ(-1px);
+        transition: transform var(--toggle-transition);
+        box-shadow: 0 2px 10px rgba(0, 0, 0, 0.5), inset 0 0 0 1px rgba(255, 255, 255, 0.1);
+      }
+
+      .neo-background-layer {
+        position: absolute;
+        inset: 0;
+        background: var(--toggle-bg);
+        background-image: linear-gradient(-45deg, rgba(20, 20, 20, 0.8) 0%, rgba(30, 30, 30, 0.3) 50%, rgba(20, 20, 20, 0.8) 100%);
+        opacity: 1;
+        transition: all var(--toggle-transition);
+      }
+
+      .neo-grid-layer {
+        position: absolute;
+        inset: 0;
+        background-image: linear-gradient(to right, rgba(71, 80, 87, 0.05) 1px, transparent 1px), linear-gradient(to bottom, rgba(71, 80, 87, 0.05) 1px, transparent 1px);
+        background-size: 5px 5px;
+        opacity: 0;
+        transition: opacity var(--toggle-transition);
+      }
+
+      .neo-track-highlight {
+        position: absolute;
+        inset: 1px;
+        border-radius: calc(var(--toggle-height) / 2);
+        background: linear-gradient(90deg, transparent, rgba(54, 249, 199, 0));
+        opacity: 0;
+        transition: all var(--toggle-transition);
+      }
+
+      .neo-spectrum-analyzer {
+        position: absolute;
+        bottom: 6px;
+        right: 10px;
+        height: 10px;
+        display: flex;
+        align-items: flex-end;
+        gap: 2px;
+        opacity: 0;
+        transition: opacity var(--toggle-transition);
+      }
+
+      .neo-spectrum-bar {
+        width: 2px;
+        height: 3px;
+        background-color: var(--toggle-on-color);
+        opacity: 0.8;
+      }
+
+      .neo-thumb {
+        position: absolute;
+        top: 2px;
+        left: 2px;
+        width: 20px;
+        height: 20px;
+        border-radius: 50%;
+        transform-style: preserve-3d;
+        transition: transform var(--toggle-transition);
+        z-index: 1;
+      }
+
+      .neo-thumb-ring {
+        position: absolute;
+        inset: 0;
+        border-radius: 50%;
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        background: var(--toggle-off-color);
+        box-shadow: 0 2px 10px rgba(0, 0, 0, 0.2);
+        transition: all var(--toggle-transition);
+      }
+
+      .neo-thumb-core {
+        position: absolute;
+        inset: 5px;
+        border-radius: 50%;
+        background: linear-gradient(135deg, rgba(255, 255, 255, 0.1), transparent);
+        transition: all var(--toggle-transition);
+        overflow: hidden;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+
+      .neo-thumb-icon {
+        position: relative;
+        width: 10px;
+        height: 10px;
+        transition: all var(--toggle-transition);
+      }
+
+      .neo-thumb-wave {
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        width: 10px;
+        height: 2px;
+        background: var(--toggle-off-color);
+        transform: translate(-50%, -50%);
+        transition: all var(--toggle-transition);
+      }
+
+      .neo-thumb-pulse {
+        position: absolute;
+        inset: 0;
+        border-radius: 50%;
+        border: 1px solid var(--toggle-off-color);
+        transform: scale(0);
+        opacity: 0;
+        transition: all var(--toggle-transition);
+      }
+
+      .neo-status {
+        position: absolute;
+        bottom: -20px;
+        left: 0;
+        width: 100%;
+        display: flex;
+        justify-content: center;
+      }
+
+      .neo-status-indicator {
+        display: flex;
+        align-items: center;
+        gap: 4px;
+      }
+
+      .neo-status-dot {
+        width: 6px;
+        height: 6px;
+        border-radius: 50%;
+        background-color: var(--toggle-off-color);
+        transition: all var(--toggle-transition);
+      }
+
+      .neo-status-text {
+        font-size: 9px;
+        font-weight: 600;
+        color: var(--toggle-off-color);
+        letter-spacing: 1px;
+        transition: all var(--toggle-transition);
+      }
+
+      .neo-status-text::before {
+        content: "STANDBY";
+      }
+
+      /* Active states */
+      .neo-toggle-input:checked + .neo-toggle .neo-thumb {
+        transform: translateX(calc(var(--toggle-width) - 24px));
+      }
+
+      .neo-toggle-input:checked + .neo-toggle .neo-thumb-ring {
+        background-color: var(--toggle-on-color);
+        border-color: rgba(54, 249, 199, 0.3);
+        box-shadow: 0 0 15px rgba(54, 249, 199, 0.5);
+      }
+
+      .neo-toggle-input:checked + .neo-toggle .neo-thumb-wave {
+        height: 8px;
+        width: 8px;
+        border-radius: 50%;
+        background: transparent;
+        border: 1px solid #fff;
+      }
+
+      .neo-toggle-input:checked + .neo-toggle .neo-thumb-pulse {
+        transform: scale(1.2);
+        opacity: 0.3;
+        animation: neo-pulse 1.5s infinite;
+      }
+
+      .neo-toggle-input:checked + .neo-toggle .neo-track-highlight {
+        background: linear-gradient(90deg, transparent, rgba(54, 249, 199, 0.2));
+        opacity: 1;
+      }
+
+      .neo-toggle-input:checked + .neo-toggle .neo-grid-layer {
+        opacity: 1;
+      }
+
+      .neo-toggle-input:checked + .neo-toggle .neo-spectrum-analyzer {
+        opacity: 1;
+      }
+
+      .neo-toggle-input:checked + .neo-toggle .neo-spectrum-bar:nth-child(1) {
+        animation: neo-spectrum 0.9s infinite;
+      }
+
+      .neo-toggle-input:checked + .neo-toggle .neo-spectrum-bar:nth-child(2) {
+        animation: neo-spectrum 0.8s 0.1s infinite;
+      }
+
+      .neo-toggle-input:checked + .neo-toggle .neo-spectrum-bar:nth-child(3) {
+        animation: neo-spectrum 1.1s 0.2s infinite;
+      }
+
+      .neo-toggle-input:checked + .neo-toggle .neo-spectrum-bar:nth-child(4) {
+        animation: neo-spectrum 0.7s 0.1s infinite;
+      }
+
+      .neo-toggle-input:checked + .neo-toggle .neo-spectrum-bar:nth-child(5) {
+        animation: neo-spectrum 0.9s 0.15s infinite;
+      }
+
+      .neo-toggle-input:checked + .neo-toggle .neo-status-dot {
+        background-color: var(--toggle-on-color);
+        box-shadow: 0 0 8px var(--toggle-on-color);
+      }
+
+      .neo-toggle-input:checked + .neo-toggle .neo-status-text {
+        color: var(--toggle-on-color);
+      }
+
+      .neo-toggle-input:checked + .neo-toggle .neo-status-text::before {
+        content: "ACTIVE";
+      }
+
+      .neo-toggle:hover .neo-thumb-ring {
+        transform: scale(1.05);
+      }
+
+      @keyframes neo-pulse {
+        0% { transform: scale(1); opacity: 0.5; }
+        50% { transform: scale(1.5); opacity: 0.2; }
+        100% { transform: scale(1); opacity: 0.5; }
+      }
+
+      @keyframes neo-spectrum {
+        0% { height: 3px; }
+        50% { height: 8px; }
+        100% { height: 3px; }
+      }
+      /* End Neo Toggle Styles */
+
       .main-wrapper {
         display: flex;
         min-height: calc(100vh - 74px);
@@ -580,7 +1279,371 @@
         padding: 30px;
         max-width: 500px;
         width: 90%;
+        max-height: 80vh;
+        overflow-y: auto;
         color: #cdd6f4;
+      }
+
+      .settings-content::-webkit-scrollbar {
+        width: 8px;
+      }
+
+      .settings-content::-webkit-scrollbar-track {
+        background: #2a2a2e;
+        border-radius: 4px;
+      }
+
+      .settings-content::-webkit-scrollbar-thumb {
+        background: #45475a;
+        border-radius: 4px;
+      }
+
+      .settings-content::-webkit-scrollbar-thumb:hover {
+        background: #6c7086;
+      }
+        
+        /* Cyberpunk Checkbox Styles */
+        .cyberpunk-checkbox {
+          appearance: none;
+          width: 20px;
+          height: 20px;
+          border: 2px solid #cba6f7;
+          border-radius: 5px;
+          background-color: transparent;
+          display: inline-block;
+          position: relative;
+          margin-right: 10px;
+          cursor: pointer;
+          transition: all 0.3s ease;
+        }
+        
+        .cyberpunk-checkbox:hover {
+          border-color: #f9e2af;
+          box-shadow: 0 0 10px rgba(203, 166, 247, 0.3);
+        }
+        
+        .cyberpunk-checkbox:before {
+          content: "";
+          background-color: #cba6f7;
+          display: block;
+          position: absolute;
+          top: 50%;
+          left: 50%;
+          transform: translate(-50%, -50%) scale(0);
+          width: 10px;
+          height: 10px;
+          border-radius: 3px;
+          transition: all 0.3s ease-in-out;
+        }
+        
+        .cyberpunk-checkbox:checked:before {
+          transform: translate(-50%, -50%) scale(1);
+        }
+        
+        .cyberpunk-checkbox:checked {
+          border-color: #f9e2af;
+          box-shadow: 0 0 15px rgba(249, 226, 175, 0.4);
+        }
+        
+        .cyberpunk-checkbox-label {
+          font-size: 14px;
+          color: #cdd6f4;
+          cursor: pointer;
+          user-select: none;
+          display: flex;
+          align-items: center;
+      }
+
+      .settings-section {
+        margin: 20px 0;
+        padding: 15px;
+        background: #181825;
+        border-radius: 8px;
+        border: 1px solid #45475a;
+      }
+
+      .settings-section-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        cursor: pointer;
+        margin-bottom: 15px;
+      }
+
+      .settings-section-header h3 {
+        margin: 0;
+        color: #cba6f7;
+      }
+
+      .settings-section-content {
+        max-height: 0;
+        overflow: hidden;
+        transition: max-height 0.3s ease-out;
+      }
+
+      .settings-section-content.expanded {
+        max-height: 2000px;
+        transition: max-height 0.3s ease-in;
+      }
+
+      .expand-icon {
+        color: #cba6f7;
+        font-weight: bold;
+        font-size: 20px;
+        transition: transform 0.3s ease;
+        width: 24px;
+        height: 24px;
+        line-height: 24px;
+        text-align: center;
+      }
+
+      .expand-icon.expanded {
+        transform: rotate(180deg);
+      }
+
+      /* Background Image Effects */
+      .page-bg-normal {
+        background-image: var(--page-bg-image) !important;
+        background-size: cover !important;
+        background-position: center !important;
+        background-repeat: no-repeat !important;
+        background-attachment: fixed !important;
+      }
+
+      .page-bg-gradient {
+        background: linear-gradient(rgba(0, 0, 0, 0.6), rgba(0, 0, 0, 0.8)), var(--page-bg-image) !important;
+        background-size: cover !important;
+        background-position: center !important;
+        background-repeat: no-repeat !important;
+        background-attachment: fixed !important;
+      }
+
+      .page-bg-pattern {
+        background-image: 
+          radial-gradient(circle at 20% 50%, rgba(120, 119, 198, 0.3) 0%, transparent 50%),
+          radial-gradient(circle at 80% 20%, rgba(255, 107, 107, 0.3) 0%, transparent 50%),
+          radial-gradient(circle at 40% 80%, rgba(255, 159, 67, 0.3) 0%, transparent 50%),
+          var(--page-bg-image) !important;
+        background-size: cover, cover, cover, cover !important;
+        background-position: center !important;
+        background-repeat: no-repeat !important;
+        background-attachment: fixed !important;
+      }
+
+      .page-bg-blur {
+        background-image: var(--page-bg-image) !important;
+        background-size: cover !important;
+        background-position: center !important;
+        background-repeat: no-repeat !important;
+        background-attachment: fixed !important;
+        filter: blur(2px) !important;
+      }
+
+      .page-bg-blur * {
+        filter: blur(0) !important;
+      }
+
+      /* Fix blur effect - only blur background, not content */
+      .blur-background {
+        position: relative;
+      }
+
+      .blur-background::before {
+        content: '';
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background-image: inherit;
+        background-size: cover;
+        background-position: center;
+        background-repeat: no-repeat;
+        background-attachment: fixed;
+        filter: blur(2px);
+        z-index: -1;
+      }
+
+      .blur-background {
+        background-image: none !important;
+        filter: none !important;
+      }
+
+      /* Pattern effect using pseudo-element */
+      .pattern-background {
+        position: relative;
+      }
+
+      .pattern-background::before {
+        content: '';
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background-image: 
+          radial-gradient(circle at 20% 50%, rgba(120, 119, 198, 0.3) 0%, transparent 50%),
+          radial-gradient(circle at 80% 20%, rgba(255, 107, 107, 0.3) 0%, transparent 50%),
+          radial-gradient(circle at 40% 80%, rgba(255, 159, 67, 0.3) 0%, transparent 50%);
+        z-index: 1;
+        pointer-events: none;
+      }
+
+      /* Monster Background Effects */
+      .monster-bg-normal {
+        position: relative;
+      }
+
+      .monster-bg-normal::before {
+        content: '';
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: rgba(0, 0, 0, var(--monster-overlay-opacity, 0.4));
+        z-index: 0;
+        pointer-events: none;
+      }
+
+      .monster-bg-normal > * {
+        position: relative;
+        z-index: 1;
+      }
+
+      .monster-bg-gradient {
+        position: relative;
+      }
+
+      .monster-bg-gradient::before {
+        content: '';
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: linear-gradient(rgba(0, 0, 0, 0.6), rgba(0, 0, 0, 0.3));
+        z-index: 0;
+        pointer-events: none;
+      }
+
+      .monster-bg-gradient > * {
+        position: relative;
+        z-index: 1;
+      }
+
+      .monster-bg-blur {
+        position: relative;
+      }
+
+      .monster-bg-blur::before {
+        content: '';
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background-image: inherit;
+        background-size: cover;
+        background-position: center;
+        background-repeat: no-repeat;
+        background-attachment: fixed;
+        filter: blur(3px);
+        z-index: 0;
+        pointer-events: none;
+      }
+
+      .monster-bg-blur {
+        background-image: none !important;
+        filter: none !important;
+      }
+
+      .monster-bg-blur > * {
+        position: relative;
+        z-index: 1;
+      }
+
+      .monster-bg-pattern {
+        position: relative;
+      }
+
+      .monster-bg-pattern::before {
+        content: '';
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background-image: 
+          repeating-linear-gradient(
+            45deg,
+            transparent,
+            transparent 10px,
+            rgba(0, 0, 0, 0.1) 10px,
+            rgba(0, 0, 0, 0.1) 20px
+          );
+        z-index: 0;
+        pointer-events: none;
+      }
+
+      .monster-bg-pattern > * {
+        position: relative;
+        z-index: 1;
+      }
+
+      /* Back to Dashboard button styling */
+      .back-to-dashboard-btn {
+        background: linear-gradient(135deg, #2a2a2e 0%, #1e1e1e 100%);
+        border: 1px solid #cba6f7;
+        border-radius: 4px;
+        color: #cdd6f4;
+        text-decoration: none;
+        padding: 2px;
+        font-size: 9px;
+        font-weight: 500;
+        transition: all 0.3s ease;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        margin-left: 4px;
+        width: 20px;
+        height: 20px;
+        white-space: nowrap;
+        flex-shrink: 0;
+      }
+
+      .back-to-dashboard-btn:hover {
+        background: linear-gradient(135deg, #3a3a3e 0%, #2e2e2e 100%);
+        border-color: #f9e2af;
+        color: #f9e2af;
+        transform: translateY(-1px);
+        box-shadow: 0 4px 12px rgba(203, 166, 247, 0.3);
+      }
+
+      /* Semi-transparent pet slot boxes */
+      .slot-box {
+        background: rgba(30, 30, 46, 0.7) !important;
+        border: 1px solid rgba(203, 166, 247, 0.3) !important;
+        border-radius: 8px !important;
+        backdrop-filter: blur(5px) !important;
+        transition: all 0.3s ease !important;
+      }
+
+      .slot-box:hover {
+        background: rgba(30, 30, 46, 0.85) !important;
+        border-color: rgba(203, 166, 247, 0.6) !important;
+        transform: translateY(-2px) !important;
+        box-shadow: 0 4px 12px rgba(203, 166, 247, 0.2) !important;
+      }
+
+      /* Full width topbar for pets page */
+      .game-topbar {
+        width: 100vw !important;
+        left: 0 !important;
+        margin-left: 0 !important;
+        position: fixed !important;
+        top: 0 !important;
+        z-index: 1000 !important;
       }
 
       .settings-section {
@@ -599,6 +1662,162 @@
         grid-template-columns: repeat(6, 1fr);
         gap: 10px;
         margin-top: 10px;
+      }
+
+      /* Menu customization styles */
+      .settings-section-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        cursor: pointer;
+        padding: 10px 0;
+        border-bottom: 1px solid #45475a;
+        margin-bottom: 15px;
+      }
+
+      .settings-section-header:hover {
+        background: rgba(255, 255, 255, 0.05);
+        border-radius: 4px;
+        padding: 10px;
+        margin: -10px;
+        margin-bottom: 5px;
+      }
+
+      .expand-icon {
+        font-size: 18px;
+        color: #cdd6f4;
+        font-weight: bold;
+        transition: transform 0.3s ease;
+      }
+
+      .menu-customization-container {
+        background: #1e1e2e;
+        border: 1px solid #45475a;
+        border-radius: 8px;
+        padding: 15px;
+      }
+
+      .menu-items-list {
+        max-height: 400px;
+        overflow-y: auto;
+        margin-bottom: 15px;
+      }
+
+      .menu-item-row {
+        display: flex;
+        align-items: center;
+        padding: 10px;
+        margin: 5px 0;
+        background: #2a2a2e;
+        border: 1px solid #45475a;
+        border-radius: 6px;
+        transition: all 0.3s ease;
+      }
+
+      .menu-item-row:hover {
+        background: #3a3a3e;
+        border-color: #6c7086;
+      }
+
+      .menu-item-row.dragging {
+        opacity: 0.5;
+        transform: rotate(2deg);
+      }
+
+      .menu-item-row.drag-over {
+        border-color: #a6e3a1;
+        background: rgba(166, 227, 161, 0.1);
+      }
+
+      .drag-handle {
+        cursor: grab;
+        color: #6c7086;
+        font-size: 16px;
+        margin-right: 10px;
+        padding: 5px;
+        border-radius: 4px;
+        transition: all 0.3s ease;
+      }
+
+      .drag-handle:hover {
+        color: #cdd6f4;
+        background: rgba(255, 255, 255, 0.1);
+      }
+
+      .drag-handle:active {
+        cursor: grabbing;
+      }
+
+      .menu-item-name {
+        flex: 1;
+        color: #cdd6f4;
+        font-size: 14px;
+        margin-left: 10px;
+      }
+
+      .menu-item-controls {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+
+      .menu-item-toggle {
+        position: relative;
+        width: 40px;
+        height: 20px;
+        background: #45475a;
+        border-radius: 10px;
+        cursor: pointer;
+        transition: background 0.3s ease;
+      }
+
+      .menu-item-toggle.active {
+        background: #a6e3a1;
+      }
+
+      .menu-item-toggle::after {
+        content: '';
+        position: absolute;
+        top: 2px;
+        left: 2px;
+        width: 16px;
+        height: 16px;
+        background: white;
+        border-radius: 50%;
+        transition: transform 0.3s ease;
+      }
+
+      .menu-item-toggle.active::after {
+        transform: translateX(20px);
+      }
+
+      .menu-item-arrows {
+        display: flex;
+        flex-direction: column;
+        gap: 2px;
+      }
+
+      .arrow-btn {
+        background: #45475a;
+        border: none;
+        color: #cdd6f4;
+        width: 24px;
+        height: 16px;
+        border-radius: 3px;
+        cursor: pointer;
+        font-size: 10px;
+        transition: all 0.3s ease;
+      }
+
+      .arrow-btn:hover {
+        background: #6c7086;
+        color: white;
+      }
+
+      .arrow-btn:disabled {
+        background: #2a2a2e;
+        color: #6c7086;
+        cursor: not-allowed;
       }
 
       .color-option {
@@ -799,11 +2018,494 @@
         padding-left: 5px;
         text-align: right;
       }
+
+      /* Battle images hiding - only hide images within the extension enemy loot container */
+      .battle-images-hidden #extension-enemy-loot-container img {
+        display: none !important;
+      }
+
+      /* Hide loot card images specifically */
+      .battle-images-hidden .loot-img-wrap {
+        display: none !important;
+      }
+
+      /* Add red border to loot cards when images are hidden */
+      .battle-images-hidden .loot-card {
+        border: 2px solid #f38ba8 !important;
+        border-radius: 8px !important;
+      }
+
+      /* Make HP bar smaller */
+      .hp-bar {
+        height: 24px !important;
+        border-radius: 6px !important;
+      }
+
+      /* Fixed width HP bar only when images are hidden */
+      .battle-images-hidden .hp-bar {
+        width: 500px !important;
+      }
+
+      /* Left align battle panel content when images are hidden */
+      .battle-images-hidden #monster-display {
+        text-align: left !important;
+        align-items: flex-start !important;
+      }
+
+      .battle-images-hidden .panel .hp-bar {
+        justify-self: start !important;
+      }
+
+      /* Fix loot container layout when images are hidden - reference from HTML example */
+      .battle-images-hidden #extension-enemy-loot-container {
+        display: flex !important;
+        gap: 30px !important;
+        justify-content: space-between !important;
+        align-items: flex-start !important;
+        width: 100% !important;
+        margin-bottom: 20px !important;
+      }
+
+      /* Create monster display area when images are hidden */
+      .battle-images-hidden #monster-display {
+        display: flex !important;
+        flex-direction: column !important;
+        align-items: flex-start !important;
+        gap: 10px !important;
+        flex-basis: 350px !important;
+        min-width: 250px !important;
+      }
+
+      .battle-images-hidden #extension-loot-container {
+        display: flex !important;
+        flex-wrap: wrap !important;
+        max-width: 50% !important;
+        margin-left: auto !important;
+      }
+
+      .hp-fill {
+        border-radius: 5px !important; 
+      }
+
+      /* Modern Sidebar Styling */
+      #game-sidebar {
+        background: linear-gradient(135deg, #2a2a2a 0%, #1e1e1e 100%) !important;
+        border-right: 2px solid #333 !important;
+        box-shadow: 2px 0 20px rgba(0, 0, 0, 0.3) !important;
+      }
+
+      /* Add gap between loot and image even when images are shown */
+      #extension-enemy-loot-container {
+        display: flex !important;
+        gap: 30px !important;
+        justify-content: space-between !important;
+        align-items: flex-start !important;
+        width: 100% !important;
+      }
+      
+      /* Update loot container positioning */
+      #extension-loot-container {
+        display: flex !important;
+        flex-wrap: wrap !important;
+        max-width: 50% !important;
+        margin-left: auto !important;
+      }
+      
+      /* Add dynamic border to loot cards */
+      .loot-card {
+        border: 2px solid var(--loot-card-border-color, #f38ba8) !important;
+        border-radius: 8px !important;
+      }
+      
+      /* Monster image wrapper with border and glow */
+      .monster-image-wrapper {
+        border: 3px solid var(--monster-image-outline-color, #ff6b6b) !important;
+        border-radius: 8px !important;
+        box-shadow: 
+          0 0 0 1px var(--monster-image-outline-color, #ff6b6b),
+          0 0 10px var(--monster-image-outline-color, #ff6b6b),
+          0 0 20px var(--monster-image-outline-color, #ff6b6b),
+          0 0 30px var(--monster-image-outline-color, #ff6b6b) !important;
+        transition: box-shadow 0.3s ease !important;
+        display: inline-block !important;
+        position: relative !important;
+      }
+      
+      /* Monster image inside wrapper */
+      .monster_image {
+        border: none !important;
+        box-shadow: none !important;
+        border-radius: 5px !important;
+        display: block !important;
+      }
+      
+      /* When monster is dead, apply grayscale to image only, not wrapper */
+      .monster_image.grayscale {
+        filter: grayscale(100%) !important;
+        -webkit-filter: grayscale(100%) !important;
+      }
+      
+
+      /* Make leaderboard and attack log side by side */
+      .leaderboard-panel, .log-panel {
+        display: inline-block !important;
+        vertical-align: top !important;
+        width: 48% !important;
+        margin: 1% !important;
+        box-sizing: border-box !important;
+      }
+      
+      /* Ensure proper spacing between side-by-side panels */
+      .leaderboard-panel {
+        margin-right: 2% !important;
+      }
+      
+      .log-panel {
+        margin-left: 2% !important;
+      }
+      
+      /* Ensure leaderboard spacing is preserved */
+      .lb-row {
+        display: flex !important;
+        align-items: center !important;
+        gap: 8px !important;
+        margin-bottom: 4px !important;
+      }
+      
+      .lb-avatar {
+        width: 24px !important;
+        height: 24px !important;
+        border-radius: 50% !important;
+        flex-shrink: 0 !important;
+      }
+      
+      .lb-name {
+        flex: 1 !important;
+        min-width: 0 !important;
+      }
+      
+      .lb-dmg {
+        flex-shrink: 0 !important;
+        font-weight: bold !important;
+      }
+
+      /* Sidebar Collapse/Expand */
+      #game-sidebar.collapsed {
+        width: 60px !important;
+        transition: width 0.3s ease;
+      }
+
+      #game-sidebar.collapsed .sidebar-header h2 {
+        display: none !important;
+      }
+
+      #game-sidebar.collapsed .sidebar-header {
+        padding: 15px 10px !important;
+        text-align: center;
+        position: relative;
+      }
+
+      #game-sidebar.collapsed .sidebar-header::after {
+        content: "☰";
+        font-size: 20px;
+        color: #cdd6f4;
+        display: block;
+        margin-top: 5px;
+      }
+
+      #game-sidebar.collapsed .sidebar-menu li a span,
+      #game-sidebar.collapsed .sidebar-menu li a:not([href]) {
+        display: none !important;
+      }
+
+      /* Hide all text content in collapsed sidebar links */
+      #game-sidebar.collapsed .sidebar-menu li a {
+        font-size: 0 !important;
+        line-height: 0 !important;
+      }
+
+      #game-sidebar.collapsed .sidebar-menu li a * {
+        font-size: 0 !important;
+      }
+
+      #game-sidebar.collapsed .sidebar-menu li a {
+        padding: 12px 10px !important;
+        justify-content: center !important;
+        display: flex !important;
+        align-items: center !important;
+      }
+
+      #game-sidebar.collapsed .sidebar-menu li a img {
+        margin-right: 0 !important;
+        width: 24px !important;
+        height: 24px !important;
+      }
+
+      #game-sidebar.collapsed .expand-btn {
+        display: none !important;
+      }
+
+      #game-sidebar.collapsed .sidebar-submenu {
+        display: none !important;
+      }
+
+      /* Adjust main content when sidebar is collapsed */
+      .main-wrapper.sidebar-collapsed .main-content {
+        margin-left: 60px !important;
+        transition: margin-left 0.3s ease;
+      }
+
+      /* Modern Sidebar Toggle Button */
+      .sidebar-toggle-btn {
+        position: absolute;
+        top: 15px;
+        right: 10px;
+        background: linear-gradient(135deg, #45475a 0%, #3a3a3a 100%);
+        border: 1px solid #555;
+        color: #cdd6f4;
+        width: 30px;
+        height: 30px;
+        border-radius: 6px;
+        cursor: pointer;
+        font-size: 16px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        transition: all 0.3s ease;
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+      }
+
+      .sidebar-toggle-btn:hover {
+        background: linear-gradient(135deg, #585b70 0%, #4a4a4a 100%);
+        transform: scale(1.05);
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+      }
+
+      #game-sidebar.collapsed .sidebar-toggle-btn {
+        right: 15px;
+      }
+
+      /* Modern Sidebar Header */
+      .sidebar-header {
+        border-bottom: 1px solid #333 !important;
+        background: linear-gradient(135deg, #1a1a1a 0%, #0e0e0e 100%) !important;
+      }
+
+      .sidebar-header h2 {
+        color: #fff !important;
+        font-weight: 600 !important;
+      }
+
+      /* Custom Scrollbar for Sidebar */
+      #game-sidebar::-webkit-scrollbar {
+        width: 8px;
+      }
+
+      #game-sidebar::-webkit-scrollbar-track {
+        background: linear-gradient(135deg, #1a1a1a 0%, #0e0e0e 100%);
+        border-radius: 4px;
+      }
+
+      #game-sidebar::-webkit-scrollbar-thumb {
+        background: linear-gradient(135deg, #2a2a2a 0%, #1e1e1e 100%);
+        border-radius: 4px;
+        border: 1px solid #333;
+      }
+
+      #game-sidebar::-webkit-scrollbar-thumb:hover {
+        background: linear-gradient(135deg, #3a3a3a 0%, #2e2e2e 100%);
+      }
+
+      /* Firefox scrollbar */
+      #game-sidebar {
+        scrollbar-width: thin;
+        scrollbar-color: #2a2a2a #1a1a1a;
+      }
+
+
+      /* Topbar Settings Button */
+      .topbar-settings-btn { 
+        font-family: inherit; 
+        font-size: 14px; 
+        background: #212121; 
+        color: white; 
+        fill: rgb(155, 153, 153); 
+        padding: 4px 8px; 
+        display: flex; 
+        align-items: center; 
+        cursor: pointer; 
+        border: none; 
+        border-radius: 6px; 
+        font-weight: 500;
+        margin-left: 8px;
+        transition: all 0.3s ease-in-out;
+        height: 32px;
+      }
+
+      .topbar-settings-btn span { 
+        display: block; 
+        margin-left: 6px; 
+        transition: all 0.3s ease-in-out;
+        font-size: 12px;
+      }
+
+      .topbar-settings-btn svg { 
+        display: block; 
+        width: 16px;
+        height: 16px;
+        transform-origin: center center; 
+        transition: transform 0.3s ease-in-out;
+      }
+
+      .topbar-settings-btn:hover { 
+        background: #000;
+      }
+
+      .topbar-settings-btn:hover svg { 
+        transform: scale(1.1); 
+        fill: #fff;
+      }
+
+      .topbar-settings-btn:active { 
+        transform: scale(0.95);
+      }
+
+      /* Team selection buttons in sidebar */
+      .pets-team-selection {
+          padding: 10px;
+          display: flex;
+          flex-direction: column;
+          gap: 8px;
+      }
+
+      .pets-team-btn {
+          padding: 8px 12px !important;
+          border-radius: 4px !important;
+          text-align: center !important;
+          color: white !important;
+          font-size: 12px !important;
+          text-decoration: none !important;
+          transition: opacity 0.2s ease !important;
+      }
+
+      .pets-team-btn:hover {
+          opacity: 0.8 !important;
+      }
+
+      /* Pet naming styles */
+      .pet-custom-name {
+          font-size: 14px;
+          font-weight: bold;
+          color: #cba6f7;
+          text-align: center;
+          margin: 8px 0 4px 0;
+          padding: 4px 8px;
+          background: rgba(203, 166, 247, 0.1);
+          border-radius: 6px;
+          border: 1px solid rgba(203, 166, 247, 0.3);
+          cursor: pointer;
+          transition: all 0.3s ease;
+          min-height: 20px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+      }
+
+      .pet-custom-name:hover {
+          background: rgba(203, 166, 247, 0.2);
+          border-color: rgba(203, 166, 247, 0.5);
+          transform: translateY(-1px);
+      }
+
+      .pet-custom-name.editing {
+          background: rgba(30, 30, 46, 0.9);
+          border-color: #cba6f7;
+          cursor: text;
+      }
+
+      .pet-name-input {
+          background: transparent;
+          border: none;
+          color: #cba6f7;
+          font-size: 14px;
+          font-weight: bold;
+          text-align: center;
+          width: 100%;
+          outline: none;
+          padding: 0;
+      }
+
+      .pet-name-input::placeholder {
+          color: rgba(203, 166, 247, 0.5);
+          font-style: italic;
+      }
+
+      .pet-name-actions {
+          display: flex;
+          gap: 4px;
+          margin-top: 4px;
+          justify-content: center;
+      }
+
+      .pet-name-btn {
+          padding: 2px 6px;
+          font-size: 10px;
+          border-radius: 3px;
+          border: none;
+          cursor: pointer;
+          transition: all 0.2s ease;
+      }
+
+      .pet-name-save {
+          background: #a6e3a1;
+          color: #1e1e2e;
+      }
+
+      .pet-name-save:hover {
+          background: #94d3a2;
+      }
+
+      .pet-name-cancel {
+          background: #f38ba8;
+          color: white;
+      }
+
+      .pet-name-cancel:hover {
+          background: #e85a7a;
+      }
+
+      .pet-name-edit-btn {
+          position: absolute;
+          top: 2px;
+          right: 2px;
+          background: rgba(203, 166, 247, 0.8);
+          color: white;
+          border: none;
+          border-radius: 50%;
+          width: 16px;
+          height: 16px;
+          font-size: 10px;
+          cursor: pointer;
+          display: none;
+          align-items: center;
+          justify-content: center;
+          transition: all 0.2s ease;
+      }
+
+      .pet-custom-name:hover .pet-name-edit-btn {
+          display: flex;
+      }
+
+      .pet-name-edit-btn:hover {
+          background: #cba6f7;
+          transform: scale(1.1);
+      }
     `;
     document.head.appendChild(style);
 
     initSidebarExpandables();
     initSettingsModal();
+    createTopbarSettingsButton();
     fetchAndUpdateSidebarStats();
     
     // Refresh stats every 30 seconds
@@ -811,6 +2513,46 @@
   }
 
   function initSidebarExpandables() {
+    // Initialize sidebar toggle functionality
+    const sidebarToggleBtn = document.getElementById('sidebar-toggle-btn');
+    const sidebar = document.getElementById('game-sidebar');
+    const mainWrapper = document.querySelector('.main-wrapper');
+    
+    if (sidebarToggleBtn && sidebar && mainWrapper) {
+      // Apply initial state
+      if (extensionSettings.sidebarCollapsed) {
+        sidebar.classList.add('collapsed');
+        mainWrapper.classList.add('sidebar-collapsed');
+        sidebarToggleBtn.textContent = '☰';
+      }
+      
+      // Toggle function
+      function toggleSidebar() {
+        const isCollapsed = sidebar.classList.contains('collapsed');
+        
+        if (isCollapsed) {
+          // Expand sidebar
+          sidebar.classList.remove('collapsed');
+          mainWrapper.classList.remove('sidebar-collapsed');
+          sidebarToggleBtn.textContent = '☰';
+          extensionSettings.sidebarCollapsed = false;
+        } else {
+          // Collapse sidebar
+          sidebar.classList.add('collapsed');
+          mainWrapper.classList.add('sidebar-collapsed');
+          sidebarToggleBtn.textContent = '☰';
+          extensionSettings.sidebarCollapsed = true;
+        }
+        
+        saveSettings();
+      }
+
+      // Event listeners
+      sidebarToggleBtn.addEventListener('click', toggleSidebar);
+      
+      // Header click functionality removed - use toggle button instead
+    }
+
     const statsExpandBtn = document.getElementById('stats-expand-btn');
     const statsExpanded = document.getElementById('stats-expanded');
 
@@ -1001,62 +2743,317 @@
       modal.className = 'settings-modal';
 
       modal.innerHTML = `
-        <div class="settings-content">
-          <h2 style="color: #cba6f7; margin-bottom: 25px; text-align: center;">Settings</h2>
+          <div class="settings-container">
+            <div class="settings-header">
+              <h1>⚙️ Settings</h1>
+            </div>
 
-          <div class="settings-section">
-            <h3>Sidebar Color</h3>
-            <p>Choose a color for the side panel:</p>
-            <div class="color-palette" id="sidebar-colors">
-              <div class="color-option" style="background: #1e1e2e" data-color="#1e1e2e" title="Dark Blue"></div>
-              <div class="color-option" style="background: #2d2d3d" data-color="#2d2d3d" title="Dark Gray"></div>
-              <div class="color-option" style="background: #1a1a2e" data-color="#1a1a2e" title="Night Blue"></div>
-              <div class="color-option" style="background: #16213e" data-color="#16213e" title="Navy"></div>
-              <div class="color-option" style="background: #0f3460" data-color="#0f3460" title="Ocean Blue"></div>
-              <div class="color-option" style="background: #533483" data-color="#533483" title="Purple"></div>
-              <div class="color-option" style="background: #7209b7" data-color="#7209b7" title="Violet"></div>
-              <div class="color-option" style="background: #2d1b69" data-color="#2d1b69" title="Deep Purple"></div>
-              <div class="color-option" style="background: #0b6623" data-color="#0b6623" title="Forest Green"></div>
-              <div class="color-option" style="background: #654321" data-color="#654321" title="Brown"></div>
-              <div class="color-option" style="background: #8b0000" data-color="#8b0000" title="Dark Red"></div>
-              <div class="color-option" style="background: #000000" data-color="#000000" title="Black"></div>
+            <div class="settings-content">
+              <div class="settings-grid">
+                <!-- Sidebar Color Section -->
+                <div class="settings-section expanded">
+                  <div class="settings-section-header" onclick="toggleSection(this)">
+                    <h3>🎨 Sidebar Color</h3>
+                    <span class="expand-icon">−</span>
+            </div>
+            <div class="settings-section-content">
+                    <p class="section-description">Choose a color theme for your side panel navigation.</p>
+                    <div class="color-input-group">
+                      <input type="color" id="sidebar-custom-color" value="#1e1e2e">
+                      <label>Custom Color</label>
+            </div>
             </div>
           </div>
 
-          <div class="settings-section">
-            <h3>Background Color</h3>
-            <p>Choose a background color for the webpage:</p>
-            <div class="color-palette" id="background-colors">
-              <div class="color-option" style="background: #000000" data-color="#000000" title="Black"></div>
-              <div class="color-option" style="background: #1a1a1a" data-color="#1a1a1a" title="Very Dark Gray"></div>
-              <div class="color-option" style="background: #2d2d2d" data-color="#2d2d2d" title="Dark Gray"></div>
-              <div class="color-option" style="background: #0f0f23" data-color="#0f0f23" title="Dark Blue"></div>
-              <div class="color-option" style="background: #1a0033" data-color="#1a0033" title="Dark Purple"></div>
-              <div class="color-option" style="background: #001a00" data-color="#001a00" title="Dark Green"></div>
-              <div class="color-option" style="background: #1a0000" data-color="#1a0000" title="Dark Red"></div>
-              <div class="color-option" style="background: #001a1a" data-color="#001a1a" title="Dark Teal"></div>
-              <div class="color-option" style="background: #1a1a00" data-color="#1a1a00" title="Dark Yellow"></div>
-              <div class="color-option" style="background: #0a0a0a" data-color="#0a0a0a" title="Almost Black"></div>
-              <div class="color-option" style="background: #404040" data-color="#404040" title="Medium Gray"></div>
-              <div class="color-option" style="background: #1e1e2e" data-color="#1e1e2e" title="Blue Gray"></div>
+                <!-- Background Color Section -->
+                <div class="settings-section expanded">
+                  <div class="settings-section-header" onclick="toggleSection(this)">
+                    <h3>🌅 Background Color</h3>
+                    <span class="expand-icon">−</span>
+            </div>
+                  <div class="settings-section-content">
+                    <p class="section-description">Set the main background color for your application.</p>
+                    <div class="color-input-group">
+                      <input type="color" id="background-custom-color" value="#000000">
+                      <label>Custom Color</label>
+                    </div>
             </div>
           </div>
 
+                <!-- Monster Image Outline Section -->
           <div class="settings-section">
-            <h3>🍯 Multiple Potion Usage</h3>
-            <p>Enable quick multiple potion usage in inventory quick access:</p>
+                  <div class="settings-section-header" onclick="toggleSection(this)">
+                    <h3>🐲 Monster Image Outline</h3>
+                    <span class="expand-icon">+</span>
+            </div>
+                  <div class="settings-section-content">
+                    <p class="section-description">Customize the outline color for monster images in battles.</p>
+                    <div class="color-input-group">
+                      <input type="color" id="monster-image-custom-color" value="#ff6b6b">
+                      <label>Custom Color</label>
+                    </div>
+            </div>
+          </div>
+
+                <!-- Loot Card Border Section -->
+          <div class="settings-section">
+                  <div class="settings-section-header" onclick="toggleSection(this)">
+                    <h3>💎 Loot Card Border</h3>
+                    <span class="expand-icon">+</span>
+                </div>
+                  <div class="settings-section-content">
+                    <p class="section-description">Choose border colors for your loot cards and reward displays.</p>
+                    <div class="color-input-group">
+                      <input type="color" id="loot-card-custom-color" value="#f38ba8">
+                      <label>Custom Color</label>
+                </div>
+            </div>
+          </div>
+
+
+          <div class="settings-section">
+            <h3>🐉 Monster Backgrounds (Always Enabled)</h3>
             <div style="margin: 15px 0;">
-              <label style="display: flex; align-items: center; gap: 10px; color: #cdd6f4; margin-bottom: 10px;">
-                <input type="checkbox" id="multiple-pots-enabled" style="transform: scale(1.2);">
-                <span>Enable multiple potion usage</span>
-              </label>
-              <div style="display: flex; align-items: center; gap: 10px; color: #cdd6f4;">
-                <label for="multiple-pots-count">Number of potions to use:</label>
-                <input type="number" id="multiple-pots-count" min="2" max="10" value="3" 
-                       style="width: 60px; padding: 5px; background: #1e1e2e; color: #cdd6f4; border: 1px solid #45475a; border-radius: 4px;">
+              <div style="margin-bottom: 15px;">
+                <p style="color: #94e2d5; margin: 0; font-size: 12px;">✨ Monster backgrounds are automatically applied when configured monsters are detected.</p>
+              </div>
+
+              <div style="margin: 15px 0;">
+                <div style="margin-bottom: 15px; display: flex; align-items: center;">
+                  <label style="color: #cdd6f4; display: flex; align-items: center;">
+                    Dark overlay for text readability:
+                    <div class="neo-toggle-container">
+                    <input type="checkbox" id="monster-bg-overlay" class="neo-toggle-input">
+                    <label for="monster-bg-overlay" class="neo-toggle">
+                      <div class="neo-track">
+                        <div class="neo-background-layer"></div>
+                        <div class="neo-grid-layer"></div>
+                        <div class="neo-track-highlight"></div>
+                        <div class="neo-spectrum-analyzer">
+                          <div class="neo-spectrum-bar"></div>
+                          <div class="neo-spectrum-bar"></div>
+                          <div class="neo-spectrum-bar"></div>
+                          <div class="neo-spectrum-bar"></div>
+                          <div class="neo-spectrum-bar"></div>
+                        </div>
+                      </div>
+                      <div class="neo-thumb">
+                        <div class="neo-thumb-ring"></div>
+                        <div class="neo-thumb-core">
+                          <div class="neo-thumb-icon">
+                            <div class="neo-thumb-wave"></div>
+                          </div>
+                          <div class="neo-thumb-pulse"></div>
+                        </div>
+                      </div>
+                      <div class="neo-status">
+                        <div class="neo-status-indicator">
+                          <div class="neo-status-dot"></div>
+                          <div class="neo-status-text"></div>
+                        </div>
+                      </div>
+                    </div>
+                  </label>
+                </div>
+                <div style="margin-left: 25px;">
+                  <label style="color: #a6adc8; font-size: 12px;">Overlay Opacity:</label>
+                  <input type="range" id="monster-bg-overlay-opacity" min="0.1" max="0.8" step="0.1" value="0.4" 
+                         style="width: 150px; margin-left: 10px;">
+                  <span id="monster-bg-opacity-value" style="color: #cdd6f4; margin-left: 10px;">40%</span>
+                </div>
+              </div>
+                
+                <div style="margin: 15px 0;">
+                  <label style="color: #f9e2af; margin-bottom: 10px; display: block;">Effect Type:</label>
+                  <select id="monster-bg-effect" style="width: 200px; padding: 8px; background: #1e1e2e; color: #cdd6f4; border: 1px solid #45475a; border-radius: 4px; margin-bottom: 15px;">
+                    <option value="normal">Normal</option>
+                    <option value="gradient">Gradient (Tint)</option>
+                    <option value="blur">Blur</option>
+                    <option value="pattern">Pattern</option>
+                  </select>
+              </div>
+
+              <div id="monster-urls-container" style="margin-top: 20px;">
+                <h4 style="color: #f9e2af; margin-bottom: 15px;">Monster Background URLs</h4>
+                <div id="monster-url-inputs">
+                  <!-- Monster URL inputs will be populated here -->
+                </div>
+                <button type="button" id="add-monster-url" class="settings-button" style="background: #89b4fa; margin-top: 10px;">
+                  ➕ Add Monster Background
+                </button>
               </div>
             </div>
           </div>
+
+
+          <div class="settings-section">
+              <h3>✨ Loot Card Highlighting</h3>
+            <p style="color: #a6adc8; font-size: 12px; margin-bottom: 15px;">
+                Customize the colors for loot card highlighting when damage requirements are met.
+            </p>
+            <div style="margin: 15px 0;">
+              <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-top: 15px;">
+                <div>
+                    <label style="color: #f9e2af; margin-bottom: 10px; display: block;">Background Color:</label>
+                  <div style="margin-top: 10px;">
+                      <input type="color" id="loot-highlighting-bg-color" value="#00ff1e" 
+                           style="width: 50px; height: 30px; border: none; border-radius: 4px; cursor: pointer;">
+                      <span style="color: #cdd6f4; margin-left: 10px;">Background Color</span>
+                  </div>
+                </div>
+                
+                <div>
+                    <label style="color: #f9e2af; margin-bottom: 10px; display: block;">Glow Color:</label>
+                  <div style="margin-top: 10px;">
+                      <input type="color" id="loot-highlighting-glow-color" value="#ffd700" 
+                           style="width: 50px; height: 30px; border: none; border-radius: 4px; cursor: pointer;">
+                      <span style="color: #cdd6f4; margin-left: 10px;">Glow Effect Color</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+            <div class="settings-section">
+              <h3>🖼️ Custom Backgrounds</h3>
+              <p style="color: #a6adc8; font-size: 12px; margin-bottom: 15px;">
+                Upload custom backgrounds for any page. 
+              </p>
+              <div style="margin: 15px 0;">
+                <label style="display: flex; align-items: center; gap: 10px; color: #cdd6f4; margin-bottom: 15px;">
+                  <input type="checkbox" id="custom-backgrounds-enabled" class="cyberpunk-checkbox">
+                  <span>Enable custom backgrounds</span>
+                </label>
+                
+                <div style="margin: 15px 0;">
+                  <label style="color: #f9e2af; margin-bottom: 10px; display: block;">Page Selection:</label>
+                  <select id="custom-bg-page-select" style="width: 200px; padding: 8px; border-radius: 4px; background: #313244; color: #cdd6f4; border: 1px solid #45475a;">
+                    <option value="">Select a page...</option>
+                    <option value="/pets.php">Pets & Eggs</option>
+                    <option value="/inventory.php">Inventory & Equipment</option>
+                    <option value="/merchant.php">Merchant</option>
+                    <option value="/blacksmith.php">Blacksmith</option>
+                    <option value="/stats.php">Stats</option>
+                    <option value="/pvp.php">PvP Arena</option>
+                    <option value="/game_dash.php">Dashboard</option>
+                    <option value="/chat.php">Global Chat</option>
+                    <option value="/achievements.php">Achievements</option>
+                    <option value="/collections.php">Collections</option>
+                    <option value="/guide.php">How To Play</option>
+                    <option value="/leaderboard.php">Weekly Leaderboard</option>
+                    <option value="/patches.php">Patch Notes</option>
+                    <option value="/manga.php">Manga-Manhwa-Manhua</option>
+                    <option value="custom">Custom Page (Type below)</option>
+                  </select>
+                  
+                  <div style="margin-top: 10px;">
+                    <input type="text" id="custom-bg-page-input" placeholder="Enter page path (e.g., /battle.php)" 
+                          style="width: 300px; padding: 8px; border-radius: 4px; background: #313244; color: #cdd6f4; border: 1px solid #45475a;">
+                  </div>
+                </div>
+                
+                <div style="margin: 15px 0;">
+                  <label style="color: #f9e2af; margin-bottom: 10px; display: block;">Background Image URL:</label>
+                  <input type="url" id="custom-bg-url" placeholder="https://example.com/image.jpg" 
+                        style="width: 400px; padding: 8px; border-radius: 4px; background: #313244; color: #cdd6f4; border: 1px solid #45475a;">
+                  <button type="button" id="add-custom-bg" class="settings-button" style="background: #89b4fa; margin-left: 10px;">
+                    ➕ Add Background
+                  </button>
+                </div>
+                
+                <div id="custom-bg-list" style="margin-top: 20px;">
+                  <!-- Custom backgrounds will be listed here -->
+              </div>
+            </div>
+          </div>
+
+          <div class="settings-section">
+            <h3>🌊 Wave Auto-Refresh</h3>
+            <p style="color: #a6adc8; font-size: 12px; margin-bottom: 15px;">
+                Automatically refresh wave pages.
+            </p>
+            <div style="margin: 15px 0;">
+              <label style="display: flex; align-items: center; gap: 10px; color: #cdd6f4; margin-bottom: 15px;">
+                  <input type="checkbox" id="wave-auto-refresh-enabled" class="cyberpunk-checkbox">
+                <span>Enable wave page auto-refresh</span>
+              </label>
+              
+              <div style="margin: 15px 0;">
+                <label style="color: #f9e2af; margin-bottom: 10px; display: block;">Refresh Interval:</label>
+                <select id="wave-refresh-interval" style="width: 200px; padding: 8px; background: #1e1e2e; color: #cdd6f4; border: 1px solid #45475a; border-radius: 4px; margin-bottom: 15px;">
+                  <option value="5">5 seconds</option>
+                  <option value="10" selected>10 seconds</option>
+                  <option value="15">15 seconds</option>
+                  <option value="30">30 seconds</option>
+                  <option value="60">1 minute</option>
+                </select>
+              </div>
+            </div>
+          </div>
+
+          <div class="settings-section">
+            <div class="settings-section-header">
+              <h3>⚔️ PvP Auto-Surrender</h3>
+              <span class="expand-icon">–</span>
+            </div>
+            <div class="settings-section-content expanded">
+              <p style="color: #a6adc8; font-size: 12px; margin-bottom: 15px;">
+                Automatically surrender when losing is detected based on battle analysis.
+              </p>
+              <div style="margin: 15px 0;">
+                <label style="display: flex; align-items: center; gap: 10px; color: #cdd6f4; margin-bottom: 15px;">
+                    <input type="checkbox" id="pvp-auto-surrender-enabled" class="cyberpunk-checkbox">
+                  <span>Enable PvP auto-surrender</span>
+                </label>
+                
+                <div style="margin: 15px 0;">
+                  <label style="color: #f9e2af; margin-bottom: 10px; display: block;">Surrender Threshold:</label>
+                  <select id="pvp-surrender-threshold" style="width: 200px; padding: 8px; background: #1e1e2e; color: #cdd6f4; border: 1px solid #45475a; border-radius: 4px; margin-bottom: 15px;">
+                    <option value="0.1">10% (Very Aggressive)</option>
+                    <option value="0.2" selected>20% (Aggressive)</option>
+                    <option value="0.3">30% (Moderate)</option>
+                    <option value="0.4">40% (Conservative)</option>
+                  </select>
+                </div>
+
+                <div style="margin: 15px 0;">
+                  <label style="color: #f9e2af; margin-bottom: 10px; display: block;">Analysis Start:</label>
+                  <select id="pvp-analyze-after" style="width: 200px; padding: 8px; background: #1e1e2e; color: #cdd6f4; border: 1px solid #45475a; border-radius: 4px; margin-bottom: 15px;">
+                    <option value="1">After 1st attack</option>
+                    <option value="2" selected>After 2nd attack</option>
+                    <option value="3">After 3rd attack</option>
+                    <option value="4">After 4th attack</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="settings-section">
+            <div class="settings-section-header" id="menu-customization-header">
+              <h3>🎛️ Menu Customization</h3>
+              <span class="expand-icon" id="menu-customization-icon">${extensionSettings.menuCustomizationExpanded ? '–' : '+'}</span>
+            </div>
+            <div class="settings-section-content" id="menu-customization-content" style="display: ${extensionSettings.menuCustomizationExpanded ? 'block' : 'none'};">
+              <p style="color: #a6adc8; font-size: 12px; margin-bottom: 15px;">
+                Customize your sidebar menu by reordering items and hiding/showing them.
+              </p>
+              <div class="menu-customization-container">
+                <div class="menu-items-list" id="menu-items-list">
+                  <!-- Menu items will be populated here -->
+                </div>
+                <div class="menu-customization-actions" style="margin-top: 15px; text-align: center;">
+                  <button class="settings-button" id="reset-menu-customization" style="background: #f38ba8; margin-right: 10px;">
+                    🔄 Reset to Default
+                  </button>
+                  <button class="settings-button" id="apply-menu-customization" style="background: #a6e3a1;">
+                    ✅ Apply Changes
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+
 
           <div class="settings-section">
             <h3 style="color: #f9e2af; margin-bottom: 15px;">📌 Pinned Items</h3>
@@ -1069,6 +3066,7 @@
             </div>
           </div>
 
+
           <div style="text-align: center; margin-top: 30px;">
             <button class="settings-button" data-action="close">Close</button>
             <button class="settings-button" data-action="reset">Reset to Default</button>
@@ -1078,10 +3076,35 @@
       `;
 
       document.body.appendChild(modal);
+        
+        // Add toggle section function to global scope
+        window.toggleSection = function(header) {
+          const section = header.parentElement;
+          const icon = header.querySelector('.expand-icon');
+          
+          section.classList.toggle('expanded');
+          
+          if (section.classList.contains('expanded')) {
+            icon.textContent = '−';
+            icon.style.transform = 'rotate(0deg)';
+          } else {
+            icon.textContent = '+';
+            icon.style.transform = 'rotate(0deg)';
+          }
+        };
+        
       setupColorSelectors();
       updateColorSelections();
-      setupMultiplePotionSettings();
+      setupMonsterBackgroundControls();
+        setupLootHighlightingSettings();
+        setupCustomBackgroundSettings();
+      setupWaveAutoRefreshSettings();
+      setupPvPAutoSurrenderSettings();
       setupPinnedItemsLimitSettings();
+      setupMenuCustomizationListeners();
+        
+        // Initialize all cyberpunk checkboxes
+        initializeAllCheckboxes();
       setupSettingsModalListeners();
     }
 
@@ -1095,25 +3118,131 @@
   }
 
   function setupColorSelectors() {
-    document.querySelectorAll('#sidebar-colors .color-option').forEach(option => {
-      option.addEventListener('click', () => {
-        const color = option.dataset.color;
-        extensionSettings.sidebarColor = color;
+      // Sidebar color picker
+      const sidebarColorInput = document.getElementById('sidebar-custom-color');
+      if (sidebarColorInput) {
+        sidebarColorInput.addEventListener('change', () => {
+          extensionSettings.sidebarColor = sidebarColorInput.value;
         saveSettings();
         applySettings();
-        updateColorSelections();
-      });
-    });
+        });
+      }
 
-    document.querySelectorAll('#background-colors .color-option').forEach(option => {
-      option.addEventListener('click', () => {
-        const color = option.dataset.color;
-        extensionSettings.backgroundColor = color;
+      // Background color picker
+      const backgroundColorInput = document.getElementById('background-custom-color');
+      if (backgroundColorInput) {
+        backgroundColorInput.addEventListener('change', () => {
+          extensionSettings.backgroundColor = backgroundColorInput.value;
         saveSettings();
         applySettings();
-        updateColorSelections();
       });
-    });
+      }
+
+    // Monster image outline color picker
+      const monsterImageColorInput = document.getElementById('monster-image-custom-color');
+      if (monsterImageColorInput) {
+        monsterImageColorInput.addEventListener('change', () => {
+          extensionSettings.monsterImageOutlineColor = monsterImageColorInput.value;
+        saveSettings();
+        applySettings();
+      });
+      }
+
+    // Loot card border color picker
+      const lootCardColorInput = document.getElementById('loot-card-custom-color');
+      if (lootCardColorInput) {
+        lootCardColorInput.addEventListener('change', () => {
+          extensionSettings.lootCardBorderColor = lootCardColorInput.value;
+        saveSettings();
+        applySettings();
+      });
+      }
+
+    // Custom color pickers
+    const monsterImageCustomColor = document.getElementById('monster-image-custom-color');
+    if (monsterImageCustomColor) {
+      monsterImageCustomColor.value = extensionSettings.monsterImageOutlineColor;
+      monsterImageCustomColor.addEventListener('change', (e) => {
+        extensionSettings.monsterImageOutlineColor = e.target.value;
+        saveSettings();
+        applySettings();
+      });
+    }
+
+    const lootCardCustomColor = document.getElementById('loot-card-custom-color');
+    if (lootCardCustomColor) {
+      lootCardCustomColor.value = extensionSettings.lootCardBorderColor;
+      lootCardCustomColor.addEventListener('change', (e) => {
+        extensionSettings.lootCardBorderColor = e.target.value;
+        saveSettings();
+        applySettings();
+      });
+    }
+  }
+
+  function setupMenuCustomizationListeners() {
+    // Menu customization header click
+    const header = document.getElementById('menu-customization-header');
+    if (header) {
+      header.addEventListener('click', function() {
+        extensionSettings.menuCustomizationExpanded = !extensionSettings.menuCustomizationExpanded;
+        const content = document.getElementById('menu-customization-content');
+        const icon = document.getElementById('menu-customization-icon');
+        
+        if (content && icon) {
+          content.style.display = extensionSettings.menuCustomizationExpanded ? 'block' : 'none';
+          icon.textContent = extensionSettings.menuCustomizationExpanded ? '–' : '+';
+          
+          if (extensionSettings.menuCustomizationExpanded) {
+            populateMenuItemsList();
+          }
+        }
+        
+        saveSettings();
+      });
+    }
+
+    // Reset button
+    const resetBtn = document.getElementById('reset-menu-customization');
+    if (resetBtn) {
+      resetBtn.addEventListener('click', function() {
+        // Reset to default menu items
+        extensionSettings.menuItems = [
+          { id: 'pvp', name: 'PvP Arena', visible: true, order: 0 },
+          { id: 'orc_cull', name: 'War Drums of GRAKTHAR', visible: true, order: 1 },
+          { id: 'event_battlefield', name: 'Event Battlefield', visible: true, order: 2 },
+          { id: 'gate_grakthar', name: 'Gate Grakthar', visible: true, order: 3 },
+          { id: 'inventory', name: 'Inventory & Equipment', visible: true, order: 4 },
+          { id: 'pets', name: 'Pets & Eggs', visible: true, order: 5 },
+          { id: 'stats', name: 'Stats', visible: true, order: 6 },
+          { id: 'blacksmith', name: 'Blacksmith', visible: true, order: 7 },
+          { id: 'merchant', name: 'Merchant', visible: true, order: 8 },
+          { id: 'inventory_quick', name: 'Inventory Quick Access', visible: true, order: 9 },
+          { id: 'achievements', name: 'Achievements', visible: true, order: 10 },
+          { id: 'collections', name: 'Collections', visible: true, order: 11 },
+          { id: 'guide', name: 'How To Play', visible: true, order: 12 },
+          { id: 'leaderboard', name: 'Weekly Leaderboard', visible: true, order: 13 },
+          { id: 'chat', name: 'Global Chat', visible: true, order: 14 },
+          { id: 'patches', name: 'Patch Notes', visible: true, order: 15 },
+          { id: 'manga', name: 'Manga-Manhwa-Manhua', visible: true, order: 16 },
+          { id: 'settings', name: 'Settings', visible: true, order: 17 }
+        ];
+        
+        saveSettings();
+        populateMenuItemsList();
+        showNotification('Menu customization reset to default', 'success');
+      });
+    }
+
+    // Apply button
+    const applyBtn = document.getElementById('apply-menu-customization');
+    if (applyBtn) {
+      applyBtn.addEventListener('click', function() {
+        saveSettings();
+        refreshSidebar();
+        showNotification('Menu customization applied!', 'success');
+      });
+    }
   }
 
   function setupMultiplePotionSettings() {
@@ -1122,26 +3251,1746 @@
     
     if (enabledCheckbox) {
       enabledCheckbox.checked = extensionSettings.multiplePotsEnabled;
-      console.log('Multiple pots enabled:', extensionSettings.multiplePotsEnabled);
       enabledCheckbox.addEventListener('change', (e) => {
         extensionSettings.multiplePotsEnabled = e.target.checked;
-        console.log('Multiple pots enabled changed to:', extensionSettings.multiplePotsEnabled);
         saveSettings();
-        updateSidebarInventorySection(); // Refresh to show/hide multiple use buttons
+        updateSidebarInventorySection();
       });
     }
     
     if (countInput) {
       countInput.value = extensionSettings.multiplePotsCount;
-      console.log('Multiple pots count:', extensionSettings.multiplePotsCount);
       countInput.addEventListener('change', (e) => {
         const value = Math.max(2, Math.min(10, parseInt(e.target.value) || 3));
         extensionSettings.multiplePotsCount = value;
-        e.target.value = value; // Ensure value is within bounds
-        console.log('Multiple pots count changed to:', extensionSettings.multiplePotsCount);
+        e.target.value = value;
         saveSettings();
-        updateSidebarInventorySection(); // Refresh to update button text
+        updateSidebarInventorySection();
       });
+    }
+  }
+
+
+  function setupMonsterBackgroundControls() {
+    const effectSelect = document.getElementById('monster-bg-effect');
+    const overlayToggle = document.getElementById('monster-bg-overlay');
+    const overlayOpacitySlider = document.getElementById('monster-bg-overlay-opacity');
+    const opacityValueSpan = document.getElementById('monster-bg-opacity-value');
+    
+
+    
+    if (effectSelect) {
+      effectSelect.value = extensionSettings.monsterBackgrounds.effect;
+      effectSelect.addEventListener('change', (e) => {
+        extensionSettings.monsterBackgrounds.effect = e.target.value;
+        saveSettings();
+        applyMonsterBackgrounds();
+      });
+    }
+    
+    // Update overlay toggle to show current state and handle changes
+    if (overlayToggle) {
+      overlayToggle.checked = extensionSettings.monsterBackgrounds.overlay;
+      overlayToggle.addEventListener('change', (e) => {
+        const newState = e.target.checked;
+        extensionSettings.monsterBackgrounds.overlay = newState;
+        saveSettings();
+        applyMonsterBackgrounds();
+
+      });
+    }
+    
+    if (overlayOpacitySlider && opacityValueSpan) {
+      overlayOpacitySlider.value = extensionSettings.monsterBackgrounds.overlayOpacity;
+      opacityValueSpan.textContent = Math.round(extensionSettings.monsterBackgrounds.overlayOpacity * 100) + '%';
+      
+      overlayOpacitySlider.addEventListener('input', (e) => {
+        const value = parseFloat(e.target.value);
+        extensionSettings.monsterBackgrounds.overlayOpacity = value;
+        opacityValueSpan.textContent = Math.round(value * 100) + '%';
+        saveSettings();
+        applyMonsterBackgrounds();
+      });
+    }
+      
+    
+    // Populate existing monster URLs
+    populateMonsterUrlInputs();
+    
+    // Use event delegation for the add button and remove buttons
+    document.addEventListener('click', (e) => {
+      if (e.target && e.target.id === 'add-monster-url') {
+        e.preventDefault();
+        addMonsterUrlInput();
+      } else if (e.target && e.target.getAttribute('data-action') === 'remove-monster-url') {
+        e.preventDefault();
+        removeMonsterUrlInput(e.target);
+      }
+    });
+  }
+
+
+    function setupLootHighlightingSettings() {
+      const backgroundColorInput = document.getElementById('loot-highlighting-bg-color');
+      const glowColorInput = document.getElementById('loot-highlighting-glow-color');
+      
+      if (backgroundColorInput) {
+        // Convert RGB to hex for the color input
+        const bgColor = extensionSettings.lootHighlighting.backgroundColor;
+        const hexColor = rgbToHex(bgColor);
+        backgroundColorInput.value = hexColor;
+        backgroundColorInput.addEventListener('change', (e) => {
+          const rgbColor = hexToRgb(e.target.value);
+          extensionSettings.lootHighlighting.backgroundColor = `rgb(${rgbColor.r} ${rgbColor.g} ${rgbColor.b} / 20%)`;
+        saveSettings();
+          highlightLootCards(); // Re-apply highlighting with new colors
+        });
+      }
+      
+      if (glowColorInput) {
+        // Convert RGBA to hex for the color input
+        const glowColor = extensionSettings.lootHighlighting.glowColor;
+        const hexColor = rgbaToHex(glowColor);
+        glowColorInput.value = hexColor;
+        glowColorInput.addEventListener('change', (e) => {
+          const rgbaColor = hexToRgba(e.target.value, 0.6);
+          extensionSettings.lootHighlighting.glowColor = rgbaColor;
+        saveSettings();
+          highlightLootCards(); // Re-apply highlighting with new colors
+        });
+      }
+    }
+
+    // Helper functions for color conversion
+    function rgbToHex(rgb) {
+      const match = rgb.match(/rgb\((\d+)\s+(\d+)\s+(\d+)/);
+      if (match) {
+        const r = parseInt(match[1]);
+        const g = parseInt(match[2]);
+        const b = parseInt(match[3]);
+        return "#" + ((1 << 24) + (r << 16) + (g << 8) + b).toString(16).slice(1);
+      }
+      return "#00ff1e"; // Default green
+    }
+
+    function rgbaToHex(rgba) {
+      const match = rgba.match(/rgba\((\d+),\s*(\d+),\s*(\d+),\s*([\d.]+)\)/);
+      if (match) {
+        const r = parseInt(match[1]);
+        const g = parseInt(match[2]);
+        const b = parseInt(match[3]);
+        return "#" + ((1 << 24) + (r << 16) + (g << 8) + b).toString(16).slice(1);
+      }
+      return "#ffd700"; // Default gold
+    }
+
+    function hexToRgb(hex) {
+      const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
+      return result ? {
+        r: parseInt(result[1], 16),
+        g: parseInt(result[2], 16),
+        b: parseInt(result[3], 16)
+      } : { r: 0, g: 255, b: 30 };
+    }
+
+    function hexToRgba(hex, alpha) {
+      const rgb = hexToRgb(hex);
+      return `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, ${alpha})`;
+    }
+
+    function updateCheckboxVisualState(checkbox) {
+      if (checkbox.checked) {
+        checkbox.style.borderColor = '#f9e2af';
+        checkbox.style.boxShadow = '0 0 15px rgba(249, 226, 175, 0.4)';
+        // Add a visual checkmark
+        if (!checkbox.dataset.checkmarkAdded) {
+          const checkmark = document.createElement('div');
+          checkmark.style.cssText = `
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 8px;
+            height: 8px;
+            background-color: #f9e2af;
+            border-radius: 2px;
+            z-index: 1;
+          `;
+          checkbox.appendChild(checkmark);
+          checkbox.dataset.checkmarkAdded = 'true';
+        }
+      } else {
+        checkbox.style.borderColor = '#cba6f7';
+        checkbox.style.boxShadow = 'none';
+        // Remove visual checkmark
+        const checkmark = checkbox.querySelector('div');
+        if (checkmark) {
+          checkmark.remove();
+          delete checkbox.dataset.checkmarkAdded;
+        }
+      }
+    }
+
+    function initializeAllCheckboxes() {
+      // Initialize all cyberpunk checkboxes
+      const checkboxes = document.querySelectorAll('.cyberpunk-checkbox');
+      
+      checkboxes.forEach((checkbox, index) => {
+        // Ensure the checkbox has the proper styling
+        checkbox.style.appearance = 'none';
+        checkbox.style.width = '20px';
+        checkbox.style.height = '20px';
+        checkbox.style.border = '2px solid #cba6f7';
+        checkbox.style.borderRadius = '5px';
+        checkbox.style.backgroundColor = 'transparent';
+        checkbox.style.display = 'inline-block';
+        checkbox.style.position = 'relative';
+        checkbox.style.marginRight = '10px';
+        checkbox.style.cursor = 'pointer';
+        checkbox.style.transition = 'all 0.3s ease';
+        
+        // Add click handler for visual updates
+        checkbox.addEventListener('click', (e) => {
+          setTimeout(() => {
+            updateCheckboxVisualState(e.target);
+          }, 10);
+        });
+        
+        // Force the visual state to match the checked property
+        updateCheckboxVisualState(checkbox);
+      });
+    }
+
+    function setupCustomBackgroundSettings() {
+      const enabledCheckbox = document.getElementById('custom-backgrounds-enabled');
+      const pageSelect = document.getElementById('custom-bg-page-select');
+      const pageInput = document.getElementById('custom-bg-page-input');
+      const urlInput = document.getElementById('custom-bg-url');
+      const addButton = document.getElementById('add-custom-bg');
+      const bgList = document.getElementById('custom-bg-list');
+      
+      if (enabledCheckbox) {
+        // Force the checkbox to the correct state
+        enabledCheckbox.checked = extensionSettings.customBackgrounds.enabled;
+        
+        // Update visual state
+        updateCheckboxVisualState(enabledCheckbox);
+        
+        // Remove any existing listeners first
+        enabledCheckbox.removeEventListener('change', handleCustomBackgroundToggle);
+        
+        // Add the event listener
+        enabledCheckbox.addEventListener('change', handleCustomBackgroundToggle);
+        
+        // Also add click listener as backup
+        enabledCheckbox.addEventListener('click', (e) => {
+          setTimeout(() => {
+            updateCheckboxVisualState(e.target);
+            handleCustomBackgroundToggle(e);
+          }, 10);
+        });
+      }
+      
+      function handleCustomBackgroundToggle(e) {
+        extensionSettings.customBackgrounds.enabled = e.target.checked;
+        saveSettings();
+        applyCustomBackgrounds();
+      }
+      
+      // Handle page selection
+      if (pageSelect) {
+        pageSelect.addEventListener('change', (e) => {
+          if (e.target.value === 'custom') {
+            pageInput.style.display = 'block';
+            pageInput.focus();
+          } else {
+            pageInput.style.display = 'none';
+            pageInput.value = '';
+          }
+        });
+      }
+      
+      // Handle adding custom background
+      if (addButton) {
+        addButton.addEventListener('click', () => {
+          const selectedPage = pageSelect.value;
+          const customPage = pageInput.value.trim();
+          const url = urlInput.value.trim();
+          
+          if (!url) {
+            alert('Please enter a background image URL');
+            return;
+          }
+          
+          const targetPage = selectedPage === 'custom' ? customPage : selectedPage;
+          if (!targetPage) {
+            alert('Please select a page or enter a custom page path');
+            return;
+          }
+          
+          // Add the background
+          extensionSettings.customBackgrounds.backgrounds[targetPage] = url;
+          saveSettings();
+          applyCustomBackgrounds();
+          populateCustomBackgroundList();
+          
+          // Clear inputs
+          pageSelect.value = '';
+          pageInput.value = '';
+          urlInput.value = '';
+          pageInput.style.display = 'none';
+        });
+      }
+      
+      // Populate the background list
+      populateCustomBackgroundList();
+    }
+
+    function populateCustomBackgroundList() {
+      const bgList = document.getElementById('custom-bg-list');
+      if (!bgList) return;
+      
+      bgList.innerHTML = '';
+      
+      Object.entries(extensionSettings.customBackgrounds.backgrounds).forEach(([page, url]) => {
+        const bgItem = document.createElement('div');
+        bgItem.style.cssText = `
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          padding: 10px;
+          margin: 5px 0;
+          background: #313244;
+          border-radius: 4px;
+          border: 1px solid #45475a;
+        `;
+        
+        bgItem.innerHTML = `
+          <div>
+            <div style="color: #f9e2af; font-weight: bold;">${page}</div>
+            <div style="color: #a6adc8; font-size: 12px; word-break: break-all;">${url}</div>
+          </div>
+          <button type="button" class="remove-custom-bg" data-page="${page}" 
+                  style="background: #f38ba8; color: white; border: none; padding: 5px 10px; border-radius: 4px; cursor: pointer;">
+            🗑️ Remove
+          </button>
+        `;
+        
+        bgList.appendChild(bgItem);
+      });
+      
+      // Add event listeners for remove buttons
+      bgList.querySelectorAll('.remove-custom-bg').forEach(button => {
+        button.addEventListener('click', (e) => {
+          const page = e.target.getAttribute('data-page');
+          delete extensionSettings.customBackgrounds.backgrounds[page];
+          saveSettings();
+          applyCustomBackgrounds();
+          populateCustomBackgroundList();
+        });
+      });
+  }
+
+  function setupLootColorSelectors() {
+    // Unlocked colors
+    document.querySelectorAll('#loot-unlocked-colors .color-option').forEach(option => {
+      option.addEventListener('click', () => {
+        const color = option.getAttribute('data-color');
+        extensionSettings.lootPanelColors.unlockedColor = color;
+        document.getElementById('loot-unlocked-custom-color').value = color;
+        saveSettings();
+        applyLootPanelColors();
+        updateLootColorSelections();
+      });
+    });
+    
+    // Locked colors
+    document.querySelectorAll('#loot-locked-colors .color-option').forEach(option => {
+      option.addEventListener('click', () => {
+        const color = option.getAttribute('data-color');
+        extensionSettings.lootPanelColors.lockedColor = color;
+        document.getElementById('loot-locked-custom-color').value = color;
+        saveSettings();
+        applyLootPanelColors();
+        updateLootColorSelections();
+      });
+    });
+  }
+
+  function updateLootColorSelections() {
+    // Update unlocked color selections
+    document.querySelectorAll('#loot-unlocked-colors .color-option').forEach(option => {
+      option.classList.remove('selected');
+      if (option.getAttribute('data-color') === extensionSettings.lootPanelColors.unlockedColor) {
+        option.classList.add('selected');
+      }
+    });
+    
+    // Update locked color selections
+    document.querySelectorAll('#loot-locked-colors .color-option').forEach(option => {
+      option.classList.remove('selected');
+      if (option.getAttribute('data-color') === extensionSettings.lootPanelColors.lockedColor) {
+        option.classList.add('selected');
+      }
+    });
+  }
+
+  function setupWaveAutoRefreshSettings() {
+    const enabledCheckbox = document.getElementById('wave-auto-refresh-enabled');
+    const intervalSelect = document.getElementById('wave-refresh-interval');
+    
+    if (enabledCheckbox) {
+      enabledCheckbox.checked = extensionSettings.waveAutoRefresh.enabled;
+      enabledCheckbox.addEventListener('change', (e) => {
+        extensionSettings.waveAutoRefresh.enabled = e.target.checked;
+        saveSettings();
+        
+        if (e.target.checked) {
+          initWaveAutoRefresh();
+        } else {
+          stopWaveAutoRefresh();
+        }
+      });
+    }
+    
+    if (intervalSelect) {
+      intervalSelect.value = extensionSettings.waveAutoRefresh.interval;
+      intervalSelect.addEventListener('change', (e) => {
+        extensionSettings.waveAutoRefresh.interval = parseInt(e.target.value);
+        saveSettings();
+        
+        // Restart auto-refresh with new interval if it's currently running
+        if (extensionSettings.waveAutoRefresh.enabled) {
+          stopWaveAutoRefresh();
+          startWaveAutoRefresh();
+        }
+      });
+    }
+  }
+
+  function setupPvPAutoSurrenderSettings() {
+    const enabledCheckbox = document.getElementById('pvp-auto-surrender-enabled');
+    const thresholdSelect = document.getElementById('pvp-surrender-threshold');
+    const analyzeAfterSelect = document.getElementById('pvp-analyze-after');
+    
+    if (enabledCheckbox) {
+      enabledCheckbox.checked = extensionSettings.pvpAutoSurrender.enabled;
+      enabledCheckbox.addEventListener('change', (e) => {
+        extensionSettings.pvpAutoSurrender.enabled = e.target.checked;
+        saveSettings();
+        
+        if (e.target.checked) {
+          initPvPAutoSurrender();
+        }
+      });
+    }
+    
+    if (thresholdSelect) {
+      thresholdSelect.value = extensionSettings.pvpAutoSurrender.surrenderThreshold;
+      thresholdSelect.addEventListener('change', (e) => {
+        extensionSettings.pvpAutoSurrender.surrenderThreshold = parseFloat(e.target.value);
+        saveSettings();
+      });
+    }
+    
+    if (analyzeAfterSelect) {
+      analyzeAfterSelect.value = extensionSettings.pvpAutoSurrender.analyzeAfterAttacks;
+      analyzeAfterSelect.addEventListener('change', (e) => {
+        extensionSettings.pvpAutoSurrender.analyzeAfterAttacks = parseInt(e.target.value);
+        saveSettings();
+      });
+    }
+    
+    extensionSettings.pvpAutoSurrender.showPrediction = true; // Always show prediction
+  }
+
+  function populateMonsterUrlInputs() {
+    const container = document.getElementById('monster-url-inputs');
+    if (!container) return;
+    
+    container.innerHTML = '';
+    
+    // Ensure monsters object exists
+    if (!extensionSettings.monsterBackgrounds.monsters) {
+      extensionSettings.monsterBackgrounds.monsters = {};
+    }
+    
+      Object.entries(extensionSettings.monsterBackgrounds.monsters).forEach(([monsterName, monsterData], index) => {
+        // Handle both old format (string URL) and new format (object with url and effect)
+        const url = typeof monsterData === 'string' ? monsterData : monsterData.url;
+        const effect = typeof monsterData === 'string' ? 'normal' : monsterData.effect;
+        addMonsterUrlInput(monsterName, url, index, effect);
+      });
+    }
+
+    function addMonsterUrlInput(monsterName = '', url = '', index = null, effect = 'normal') {
+    const container = document.getElementById('monster-url-inputs');
+    if (!container) {
+      return;
+    }
+    
+    const inputIndex = index !== null ? index : Object.keys(extensionSettings.monsterBackgrounds.monsters).length;
+    
+    const inputDiv = document.createElement('div');
+      inputDiv.style.cssText = 'display: flex; gap: 8px; margin-bottom: 10px; align-items: center;';
+    inputDiv.innerHTML = `
+        <input type="text" placeholder="Monster Name" 
+             value="${monsterName}" 
+              style="width: 150px; padding: 6px; background: #1e1e2e; color: #cdd6f4; border: 1px solid #45475a; border-radius: 4px; font-size: 12px;"
+             class="monster-name-input">
+        <input type="url" placeholder="Image URL" 
+             value="${url}" 
+              style="width: 200px; padding: 6px; background: #1e1e2e; color: #cdd6f4; border: 1px solid #45475a; border-radius: 4px; font-size: 12px;"
+             class="monster-url-input">
+        <select class="monster-effect-select" style="width: 100px; padding: 6px; background: #1e1e2e; color: #cdd6f4; border: 1px solid #45475a; border-radius: 4px; font-size: 12px;">
+          <option value="normal" ${effect === 'normal' ? 'selected' : ''}>Normal</option>
+          <option value="gradient" ${effect === 'gradient' ? 'selected' : ''}>Gradient</option>
+          <option value="blur" ${effect === 'blur' ? 'selected' : ''}>Blur</option>
+          <option value="pattern" ${effect === 'pattern' ? 'selected' : ''}>Pattern</option>
+        </select>
+        <button class="settings-button" style="background: #f38ba8; padding: 6px 10px; font-size: 12px; min-width: 40px;" data-action="remove-monster-url">
+        🗑️
+      </button>
+    `;
+    
+    container.appendChild(inputDiv);
+    
+    // Add event listeners
+    const nameInput = inputDiv.querySelector('.monster-name-input');
+    const urlInput = inputDiv.querySelector('.monster-url-input');
+      const effectSelect = inputDiv.querySelector('.monster-effect-select');
+    const removeButton = inputDiv.querySelector('[data-action="remove-monster-url"]');
+    
+    nameInput.addEventListener('input', () => {
+      updateMonsterUrlMapping();
+    });
+    
+    urlInput.addEventListener('input', () => {
+      updateMonsterUrlMapping();
+    });
+      
+      effectSelect.addEventListener('change', () => {
+      updateMonsterUrlMapping();
+    });
+    
+    // Remove button will be handled by event delegation
+  }
+
+  function removeMonsterUrlInput(button) {
+    const inputDiv = button.parentElement;
+    inputDiv.remove();
+    updateMonsterUrlMapping();
+  }
+
+  function updateMonsterUrlMapping() {
+    const container = document.getElementById('monster-url-inputs');
+    if (!container) return;
+    
+    // Ensure monsterBackgrounds and monsters objects exist
+    if (!extensionSettings.monsterBackgrounds) {
+      extensionSettings.monsterBackgrounds = {
+        enabled: true,
+        effect: 'normal',
+        overlay: true,
+        overlayOpacity: 0.5,
+        monsters: {}
+      };
+    }
+    if (!extensionSettings.monsterBackgrounds.monsters) {
+      extensionSettings.monsterBackgrounds.monsters = {};
+    }
+    
+    const newMonsters = {};
+    
+    container.querySelectorAll('.monster-name-input').forEach((nameInput, index) => {
+      const urlInput = container.querySelectorAll('.monster-url-input')[index];
+        const effectSelect = container.querySelectorAll('.monster-effect-select')[index];
+      const monsterName = nameInput.value.trim();
+      const url = urlInput.value.trim();
+        const effect = effectSelect ? effectSelect.value : 'normal';
+      
+      if (monsterName && url) {
+          newMonsters[monsterName] = {
+            url: url,
+            effect: effect
+          };
+      }
+    });
+    
+    extensionSettings.monsterBackgrounds.monsters = newMonsters;
+    saveSettings();
+    applyMonsterBackgrounds();
+  }
+
+
+  function applyMonsterBackgrounds() {
+
+    // Set CSS variable for overlay opacity
+    document.documentElement.style.setProperty('--monster-overlay-opacity', extensionSettings.monsterBackgrounds.overlayOpacity);
+
+    // Handle special cases for each page type
+    const currentPage = window.location.pathname;
+    
+    if (currentPage.includes('merchant.php')) {
+      applyMerchantBackground();
+      return;
+    }
+    
+    const monstersFound = [];
+
+    // Handle battle page
+    if (currentPage.includes('battle.php')) {
+      const panels = document.querySelectorAll('.panel');
+      panels.forEach((panel, index) => {
+        const monsterNameElement = panel.querySelector('h3, strong');
+        if (monsterNameElement) {
+          const rawText = monsterNameElement.textContent;
+          const monsterName = rawText.replace(/[🧟⚔️🛡️💀👹👻🎭]/g, '').trim();
+          if (monsterName && extensionSettings.monsterBackgrounds.monsters[monsterName]) {
+            monstersFound.push({ name: monsterName, element: panel });
+          }
+        }
+      });
+    }
+    
+    // Handle wave/event pages
+    if (currentPage.includes('active_wave.php') || currentPage.includes('orc_cull_event.php')) {
+      const panels = document.querySelectorAll('.panel');
+      panels.forEach((panel, index) => {
+        const monsterNameElements = panel.querySelectorAll('h3, strong');
+        monsterNameElements.forEach(el => {
+          const rawText = el.textContent;
+          const monsterName = rawText.replace(/[🧟⚔️🛡️💀👹👻🎭]/g, '').trim();
+          if (monsterName && extensionSettings.monsterBackgrounds.monsters[monsterName]) {
+            const exists = monstersFound.some(m => m.name === monsterName && m.element === panel);
+            if (!exists) {
+              monstersFound.push({ name: monsterName, element: panel });
+            }
+          }
+        });
+      });
+    }
+
+    // Handle other pages - let's add general detection
+    if (!currentPage.includes('battle.php') && !currentPage.includes('active_wave.php') && !currentPage.includes('orc_cull_event.php')) {
+      const panels = document.querySelectorAll('.panel');
+      panels.forEach((panel, index) => {
+        const textElements = panel.querySelectorAll('h1, h2, h3, h4, strong, b, .monster-name, [class*="monster"], [id*="monster"]');
+        textElements.forEach(el => {
+          const rawText = el.textContent;
+          const monsterName = rawText.replace(/[🧟⚔️🛡️💀👹👻🎭]/g, '').trim();
+          if (monsterName && extensionSettings.monsterBackgrounds.monsters[monsterName]) {
+            const exists = monstersFound.some(m => m.name === monsterName && m.element === panel);
+            if (!exists) {
+              monstersFound.push({ name: monsterName, element: panel });
+            }
+          }
+        });
+      });
+    }
+
+    
+    let shouldApplyBackground = monstersFound.length > 0;
+    let selectedMonsterData = null;
+    let selectedMonsterName = '';
+    
+    if (currentPage.includes('merchant.php')) {
+      shouldApplyBackground = true;
+      
+      // Use the first configured monster for merchant page
+      const availableMonsters = extensionSettings.monsterBackgrounds?.monsters || {};
+      const firstMonsterEntry = Object.entries(availableMonsters)[0];
+      
+      if (firstMonsterEntry) {
+        selectedMonsterName = firstMonsterEntry[0];
+        selectedMonsterData = firstMonsterEntry[1];
+
+      }
+    } else if (monstersFound.length > 0) {
+      // Use detected monster for other pages
+      const firstMonster = monstersFound[0];
+      selectedMonsterName = firstMonster.name;
+      selectedMonsterData = extensionSettings.monsterBackgrounds.monsters[selectedMonsterName];
+    }
+    
+    // Apply background if we should (either monsters found OR merchant page)
+    if (shouldApplyBackground && selectedMonsterData) {
+      // Use the first monster found for the background
+      const firstMonster = monstersFound[0];
+      const monsterName = firstMonster.name;
+      const monsterData = extensionSettings.monsterBackgrounds.monsters[monsterName];
+      
+      // Handle both old format (string URL) and new format (object with url and effect)
+      const monsterUrl = typeof monsterData === 'string' ? monsterData : monsterData?.url;
+      
+
+      
+      if (monsterUrl && typeof monsterUrl === 'string') {
+        // Remove any existing monster background styles
+        const existingStyles = document.querySelectorAll('style[id^="monster-bg-"]');
+        existingStyles.forEach(style => style.remove());
+        
+        // Create unified style for ALL panels (no special classes needed)
+        const styleId = 'monster-bg-unified';
+        const style = document.createElement('style');
+        style.id = styleId;
+        
+        // Generate CSS that targets ALL panels directly
+        let css = '';
+        const selector = '.panel';
+
+        
+        // Add some debugging info
+
+        
+        switch (extensionSettings.monsterBackgrounds.effect) {
+          case 'blur':
+            css = `
+              ${selector} {
+                background-image: url('${monsterUrl}') !important;
+                background-size: cover !important;
+                background-position: center !important;
+                background-repeat: no-repeat !important;
+                background-attachment: fixed !important;
+                position: relative !important;
+              }
+              
+              ${selector}::before {
+                content: '';
+                position: absolute;
+                top: 0;
+                left: 0;
+                right: 0;
+                bottom: 0;
+                background-image: inherit;
+                background-size: inherit;
+                background-position: inherit;
+                filter: blur(3px);
+                z-index: 0;
+              }
+              
+              ${selector} > * {
+                position: relative;
+                z-index: 1;
+              }
+            `;
+            break;
+            
+          case 'gradient':
+            css = `
+              ${selector} {
+                background-image: 
+                  linear-gradient(rgba(0, 0, 0, 0.6), rgba(0, 0, 0, 0.3)),
+                  url('${monsterUrl}') !important;
+                background-size: cover !important;
+                background-position: center !important;
+                background-repeat: no-repeat !important;
+                background-attachment: fixed !important;
+              }
+            `;
+            break;
+            
+          case 'pattern':
+            css = `
+              ${selector} {
+                background-image: 
+                  repeating-linear-gradient(
+                    45deg,
+                    transparent,
+                    transparent 10px,
+                    rgba(0, 0, 0, 0.1) 10px,
+                    rgba(0, 0, 0, 0.1) 20px
+                  ),
+                  url('${monsterUrl}') !important;
+                background-size: cover !important;
+                background-position: center !important;
+                background-repeat: no-repeat !important;
+                background-attachment: fixed !important;
+              }
+            `;
+            break;
+            
+          default: // normal
+            css = `
+              ${selector} {
+                background-image: url('${monsterUrl}') !important;
+                background-size: cover !important;
+                background-position: center !important;
+                background-repeat: no-repeat !important;
+                background-attachment: fixed !important;
+                position: relative !important;
+              }
+              
+              ${selector}::before {
+                content: '';
+                position: absolute;
+                top: 0;
+                left: 0;
+                right: 0;
+                bottom: 0;
+                background: rgba(0, 0, 0, ${extensionSettings.monsterBackgrounds.overlayOpacity});
+                z-index: 0;
+              }
+              
+              ${selector} > * {
+                position: relative;
+                z-index: 1;
+              }
+            `;
+        }
+        
+
+        
+        // Test if image can be loaded
+        const testImage = new Image();
+        testImage.onload = () => {
+
+        };
+        testImage.onerror = () => {
+          console.error(`❌ Failed to load image: ${monsterUrl}`);
+
+        };
+        testImage.src = monsterUrl;
+        
+        style.textContent = css;
+        document.head.appendChild(style);
+
+        
+        // Log the panels that will be affected
+        const allPanels = document.querySelectorAll('.panel');
+
+      }
+    } else {
+      // No monsters found, remove any existing monster backgrounds
+      const existingStyles = document.querySelectorAll('style[id^="monster-bg-"]');
+      existingStyles.forEach(style => style.remove());
+      
+
+    }
+
+  }
+
+  // Apply merchant page background to panels (same as page background)
+  function applyMerchantBackground() {
+    
+    // Remove any existing monster/merchant background styles
+    const existingStyles = document.querySelectorAll('style[id^="monster-bg-"], style[id="merchant-bg"]');
+    existingStyles.forEach(style => style.remove());
+    
+    // Get the current page background from body or html
+    const bodyStyle = window.getComputedStyle(document.body);
+    const htmlStyle = window.getComputedStyle(document.documentElement);
+    
+    // Try to get background properties from body first, then html
+    const backgroundImage = bodyStyle.backgroundImage !== 'none' ? bodyStyle.backgroundImage : htmlStyle.backgroundImage;
+    const backgroundSize = bodyStyle.backgroundSize || htmlStyle.backgroundSize || 'cover';
+    const backgroundPosition = bodyStyle.backgroundPosition || htmlStyle.backgroundPosition || 'center';
+    const backgroundRepeat = bodyStyle.backgroundRepeat || htmlStyle.backgroundRepeat || 'no-repeat';
+    const backgroundAttachment = bodyStyle.backgroundAttachment || htmlStyle.backgroundAttachment || 'fixed';
+    
+    console.log('Page background properties:', {
+      image: backgroundImage,
+      size: backgroundSize,
+      position: backgroundPosition,
+      repeat: backgroundRepeat,
+      attachment: backgroundAttachment
+    });
+    
+    if (backgroundImage && backgroundImage !== 'none') {
+      // Create style to apply same background to panels
+      const styleId = 'merchant-bg';
+      const style = document.createElement('style');
+      style.id = styleId;
+      
+      const css = `
+        .panel {
+          background-image: ${backgroundImage} !important;
+          background-size: ${backgroundSize} !important;
+          background-position: ${backgroundPosition} !important;
+          background-repeat: ${backgroundRepeat} !important;
+          background-attachment: ${backgroundAttachment} !important;
+          position: relative !important;
+        }
+        
+        .panel::before {
+          content: '';
+          position: absolute;
+          top: 0;
+          left: 0;
+          right: 0;
+          bottom: 0;
+          background: rgba(0, 0, 0, 0.4);
+          z-index: 0;
+        }
+        
+        .panel > * {
+          position: relative;
+          z-index: 1;
+        }
+      `;
+      
+
+      style.textContent = css;
+      document.head.appendChild(style);
+      
+      const allPanels = document.querySelectorAll('.panel');
+
+    } else {
+
+    }
+  }
+
+  // Initialize monster background observer to detect new panels
+  function initMonsterBackgroundObserver() {
+    if (!extensionSettings.monsterBackgrounds?.enabled) {
+      return;
+    }
+
+    const observer = new MutationObserver((mutations) => {
+      let shouldUpdate = false;
+      
+      mutations.forEach((mutation) => {
+        // Check for added nodes that might be monster panels
+        mutation.addedNodes.forEach((node) => {
+          if (node.nodeType === Node.ELEMENT_NODE) {
+            // Check if the added node is a panel or contains panels
+            if (node.classList?.contains('panel') || node.querySelector?.('.panel')) {
+              shouldUpdate = true;
+            }
+          }
+        });
+        
+        // Check for modified text content that might be monster names
+        if (mutation.type === 'childList' || mutation.type === 'characterData') {
+          const target = mutation.target;
+          if (target.closest && target.closest('.panel')) {
+            shouldUpdate = true;
+          }
+        }
+      });
+
+      if (shouldUpdate) {
+        // Debounce the update to avoid excessive calls
+        setTimeout(() => {
+          applyMonsterBackgrounds();
+        }, 100);
+      }
+    });
+
+    // Start observing
+    observer.observe(document.body, {
+      childList: true,
+      subtree: true,
+      characterData: true
+    });
+
+
+  }
+
+  // Debug function for monster backgrounds - can be called from console
+  window.debugMonsterBackgrounds = function() {
+    console.log('=== MONSTER BACKGROUND DEBUG INFO ===');
+    console.log('Extension Settings:', extensionSettings);
+    console.log('Monster Backgrounds Enabled:', extensionSettings.monsterBackgrounds?.enabled);
+    console.log('Available Monster Backgrounds:', extensionSettings.monsterBackgrounds?.monsters);
+    console.log('Current Page:', window.location.pathname);
+    
+    const panels = document.querySelectorAll('.panel');
+    console.log('Total Panels Found:', panels.length);
+    
+    panels.forEach((panel, index) => {
+      console.log(`=== Panel ${index + 1} ===`);
+      console.log('Panel element:', panel);
+      console.log('Panel classes:', panel.className);
+      console.log('Panel data-monster:', panel.getAttribute('data-monster'));
+      
+      const textElements = panel.querySelectorAll('h1, h2, h3, h4, strong, b, span');
+      console.log('Text elements in panel:', textElements.length);
+      
+      textElements.forEach((el, i) => {
+        console.log(`  Text ${i + 1}: "${el.textContent.trim()}"`);
+      });
+    });
+    
+    const monsterStyles = document.querySelectorAll('[id^="monster-bg-"]');
+    console.log('Monster style elements found:', monsterStyles.length);
+    monsterStyles.forEach((style, i) => {
+      console.log(`Style ${i + 1}:`, style.id, style.textContent);
+    });
+    
+    // Force re-apply monster backgrounds
+    console.log('Re-applying monster backgrounds...');
+    applyMonsterBackgrounds();
+  };
+
+  // Console function to manually enable monster backgrounds
+  window.enableMonsterBackgrounds = function() {
+    console.log('Manually enabling monster backgrounds...');
+    extensionSettings.monsterBackgrounds.enabled = true;
+    saveSettings();
+    
+    // Update the UI toggle if it exists
+    const enabledToggle = document.getElementById('monster-backgrounds-enabled');
+    if (enabledToggle) {
+      enabledToggle.checked = true;
+    }
+    
+    applyMonsterBackgrounds();
+    console.log('Monster backgrounds enabled! Current status:', extensionSettings.monsterBackgrounds);
+  };
+
+  // Console function to test image loading
+  window.testMonsterImageUrls = function() {
+    console.log('=== Testing Monster Image URLs ===');
+    const monsters = extensionSettings.monsterBackgrounds?.monsters || {};
+    
+    Object.entries(monsters).forEach(([monsterName, monsterData]) => {
+      // Handle both old format (string URL) and new format (object with url and effect)
+      const url = typeof monsterData === 'string' ? monsterData : monsterData?.url;
+      
+      console.log(`Testing ${monsterName}:`, monsterData);
+      console.log(`Extracted URL: ${url}`);
+      
+      if (!url || typeof url !== 'string') {
+        console.error(`❌ ${monsterName}: Invalid URL format`);
+        return;
+      }
+      
+      const testImg = new Image();
+      testImg.onload = () => {
+        console.log(`✅ ${monsterName}: Image loaded successfully`);
+        console.log(`   Dimensions: ${testImg.naturalWidth}x${testImg.naturalHeight}`);
+      };
+      testImg.onerror = (e) => {
+        console.error(`❌ ${monsterName}: Failed to load image`);
+        console.error(`   URL: ${url}`);
+        console.error(`   Error:`, e);
+        
+        // Try to diagnose the issue
+        if (url.startsWith('http://')) {
+          console.warn('   ⚠️  HTTP URL might be blocked on HTTPS sites');
+        }
+        if (!url.startsWith('http') && !url.startsWith('data:')) {
+          console.warn('   ⚠️  Relative URL might not resolve correctly');
+        }
+      };
+      testImg.src = url;
+    });
+    
+    if (Object.keys(monsters).length === 0) {
+      console.log('No monster URLs configured to test');
+    }
+  };
+
+  // Console function to test a specific URL
+  window.testImageUrl = function(url) {
+    console.log(`Testing specific URL: ${url}`);
+    const testImg = new Image();
+    testImg.onload = () => {
+      console.log(`✅ Image loaded successfully: ${testImg.naturalWidth}x${testImg.naturalHeight}`);
+    };
+    testImg.onerror = (e) => {
+      console.error(`❌ Failed to load image: ${url}`);
+      console.error('Error:', e);
+    };
+    testImg.src = url;
+  };
+
+  // Console function to check current monster background status
+  window.checkMonsterBackgroundStatus = function() {
+    console.log('=== Monster Background Status ===');
+    console.log('Enabled: Always enabled (no toggle)');
+    console.log('Effect:', extensionSettings.monsterBackgrounds?.effect);
+    console.log('Overlay:', extensionSettings.monsterBackgrounds?.overlay);
+    console.log('Opacity:', extensionSettings.monsterBackgrounds?.overlayOpacity);
+    console.log('Configured Monsters:', Object.keys(extensionSettings.monsterBackgrounds?.monsters || {}));
+    console.log('Full settings:', extensionSettings.monsterBackgrounds);
+    
+    // Check UI state
+    const enabledToggle = document.getElementById('monster-backgrounds-enabled');
+    console.log('Toggle element found:', !!enabledToggle);
+    if (enabledToggle) {
+      console.log('Toggle checked state:', enabledToggle.checked);
+      console.log('Toggle type:', enabledToggle.type);
+      console.log('Toggle parent:', enabledToggle.parentElement);
+      
+      // Check for neo toggle structure
+      const neoToggle = enabledToggle.nextElementSibling;
+      console.log('Neo toggle label found:', !!neoToggle);
+      if (neoToggle) {
+        console.log('Neo toggle classes:', neoToggle.className);
+      }
+    }
+  };
+
+  // Test function to add direct click detection
+  window.testMonsterToggleClicks = function() {
+    console.log('🧪 Setting up test click detection...');
+    const enabledToggle = document.getElementById('monster-backgrounds-enabled');
+    if (enabledToggle) {
+      const container = enabledToggle.closest('.neo-toggle-container');
+      if (container) {
+        container.addEventListener('click', (e) => {
+          console.log('🎯 Click detected on neo toggle container!');
+          console.log('Click target:', e.target);
+          console.log('Current toggle state:', enabledToggle.checked);
+        }, true);
+        
+        // Add click detection to all elements in the toggle
+        container.querySelectorAll('*').forEach((element, index) => {
+          element.addEventListener('click', (e) => {
+            console.log(`🎯 Click on toggle element ${index}:`, element);
+          }, true);
+        });
+      }
+    }
+  };
+
+  // Test function to verify all functions are available
+  window.testMonsterFunctions = function() {
+    console.log('🧪 Testing monster background functions availability...');
+    console.log('debugMonsterBackgrounds:', typeof window.debugMonsterBackgrounds);
+    console.log('enableMonsterBackgrounds:', typeof window.enableMonsterBackgrounds);
+    console.log('checkMonsterBackgroundStatus:', typeof window.checkMonsterBackgroundStatus);
+    console.log('toggleMonsterBackgrounds:', typeof window.toggleMonsterBackgrounds);
+    console.log('forceEnableMonsterBackgrounds:', typeof window.forceEnableMonsterBackgrounds);
+    console.log('testMonsterToggleClicks:', typeof window.testMonsterToggleClicks);
+    
+    if (typeof window.forceEnableMonsterBackgrounds === 'function') {
+      console.log('✅ All functions are available! Try: forceEnableMonsterBackgrounds()');
+    } else {
+      console.log('❌ Functions not available. Extension may not be fully loaded.');
+    }
+  };
+
+  // Console function to force toggle monster backgrounds
+  window.toggleMonsterBackgrounds = function() {
+    console.log('🎛️ Forcing toggle of monster backgrounds...');
+    const enabledToggle = document.getElementById('monster-backgrounds-enabled');
+    if (enabledToggle) {
+      console.log('Current toggle state:', enabledToggle.checked);
+      enabledToggle.checked = !enabledToggle.checked;
+      console.log('New toggle state:', enabledToggle.checked);
+      
+      // Try multiple event types to ensure it triggers
+      enabledToggle.dispatchEvent(new Event('change', { bubbles: true }));
+      enabledToggle.dispatchEvent(new Event('input', { bubbles: true }));
+      
+      // Manual fallback
+      const newState = enabledToggle.checked;
+      extensionSettings.monsterBackgrounds.enabled = newState;
+      saveSettings();
+      applyMonsterBackgrounds();
+      console.log('Manually set monster backgrounds to:', newState);
+    } else {
+      console.log('Toggle element not found, manually toggling...');
+      extensionSettings.monsterBackgrounds.enabled = !extensionSettings.monsterBackgrounds.enabled;
+      saveSettings();
+      applyMonsterBackgrounds();
+      console.log('Manually toggled to:', extensionSettings.monsterBackgrounds.enabled);
+    }
+  };
+
+  // Simple function to just enable monster backgrounds
+  window.forceEnableMonsterBackgrounds = function() {
+    console.log('🎛️ Force enabling monster backgrounds...');
+    extensionSettings.monsterBackgrounds.enabled = true;
+    saveSettings();
+    
+    const enabledToggle = document.getElementById('monster-backgrounds-enabled');
+    if (enabledToggle) {
+      enabledToggle.checked = true;
+    }
+    
+    applyMonsterBackgrounds();
+    console.log('Monster backgrounds force enabled!');
+  };
+
+
+
+  function applyLootPanelColors() {
+    if (!extensionSettings.lootPanelColors.enabled) {
+      // Remove custom colors from all loot cards
+      document.querySelectorAll('.loot-card').forEach(card => {
+        card.style.borderColor = '';
+        card.style.backgroundColor = '';
+      });
+      return;
+    }
+
+    // Find all loot cards
+    const lootCards = document.querySelectorAll('.loot-card');
+    
+    lootCards.forEach(card => {
+      // Check if the card is locked or unlocked
+      const isLocked = card.classList.contains('locked') || 
+                      card.querySelector('.lock-badge') || 
+                      card.textContent.includes('Locked');
+      
+      if (isLocked) {
+        // Apply locked color
+        card.style.borderColor = extensionSettings.lootPanelColors.lockedColor;
+        card.style.backgroundColor = extensionSettings.lootPanelColors.lockedColor + '20'; // Add transparency
+      } else {
+        // Apply unlocked color
+        card.style.borderColor = extensionSettings.lootPanelColors.unlockedColor;
+        card.style.backgroundColor = extensionSettings.lootPanelColors.unlockedColor + '20'; // Add transparency
+      }
+    });
+
+    console.log(`Applied loot panel colors: ${lootCards.length} cards processed`);
+  }
+
+  function initWaveAutoRefresh() {
+    // Check if we're on a wave page
+    const isWavePage = window.location.pathname.includes('active_wave.php') || 
+                      window.location.pathname.includes('wave') ||
+                      document.querySelector('.monster-card') !== null;
+    
+    if (!isWavePage) return;
+    
+    // Clear any existing interval
+    if (waveRefreshInterval) {
+      clearInterval(waveRefreshInterval);
+      waveRefreshInterval = null;
+    }
+    
+    // Start auto-refresh if enabled
+    if (extensionSettings.waveAutoRefresh.enabled) {
+      startWaveAutoRefresh();
+    }
+  }
+
+  function startWaveAutoRefresh() {
+    const intervalMs = extensionSettings.waveAutoRefresh.interval * 1000;
+    
+    waveRefreshInterval = setInterval(() => {
+      console.log('Auto-refreshing wave page...');
+      window.location.reload();
+    }, intervalMs);
+    
+    console.log(`Wave auto-refresh started: ${extensionSettings.waveAutoRefresh.interval} seconds`);
+  }
+
+  function stopWaveAutoRefresh() {
+    if (waveRefreshInterval) {
+      clearInterval(waveRefreshInterval);
+      waveRefreshInterval = null;
+      console.log('Wave auto-refresh stopped');
+    }
+  }
+
+  // Cleanup on page unload
+  window.addEventListener('beforeunload', () => {
+    stopWaveAutoRefresh();
+  });
+
+  // PvP Auto-Surrender System
+  let pvpBattleData = {
+    myMaxHp: 0,
+    enemyMaxHp: 0,
+    myCurrentHp: 0,
+    enemyCurrentHp: 0,
+    myDamageDealt: 0,
+    enemyDamageDealt: 0,
+    attackCount: 0,
+    predictionBox: null
+  };
+
+  function initPvPAutoSurrender() {
+    // Check if we're on a PvP battle page
+    const isPvPBattle = window.location.pathname.includes('pvp_battle.php') || 
+                       document.querySelector('#enemyHero') !== null;
+    
+    if (!isPvPBattle) return;
+    
+    initializeBattleData();
+    
+    // Start monitoring battle log
+    monitorBattleLog();
+  }
+
+  function initializeBattleData() {
+    const myHpText = document.getElementById('myHpText');
+    const enemyHpText = document.getElementById('enemyHpText');
+    
+    if (myHpText && enemyHpText) {
+      // Parse HP from text like "❤️ 5,846 / 6,000 HP"
+      const myHpMatch = myHpText.textContent.match(/(\d+(?:,\d+)*)\s*\/\s*(\d+(?:,\d+)*)/);
+      const enemyHpMatch = enemyHpText.textContent.match(/(\d+(?:,\d+)*)\s*\/\s*(\d+(?:,\d+)*)/);
+      
+      if (myHpMatch && enemyHpMatch) {
+        pvpBattleData.myCurrentHp = parseInt(myHpMatch[1].replace(/,/g, ''));
+        pvpBattleData.myMaxHp = parseInt(myHpMatch[2].replace(/,/g, ''));
+        pvpBattleData.enemyCurrentHp = parseInt(enemyHpMatch[1].replace(/,/g, ''));
+        pvpBattleData.enemyMaxHp = parseInt(enemyHpMatch[2].replace(/,/g, ''));
+      }
+    }
+  }
+
+  function monitorBattleLog() {
+    const logWrap = document.getElementById('logWrap');
+    if (!logWrap) return;
+    
+    const observer = new MutationObserver((mutations) => {
+      mutations.forEach((mutation) => {
+        if (mutation.type === 'childList' && mutation.addedNodes.length > 0) {
+          const endTitle = document.getElementById('endTitle');
+          if (endTitle && endTitle.textContent.includes('Victory')) {
+            observer.disconnect();
+            return;
+          }
+          setTimeout(() => {
+            analyzeBattleState();
+          }, 500);
+        }
+      });
+    });
+    
+    observer.observe(logWrap, { childList: true, subtree: true });
+  }
+
+  function createPredictionBox() {
+    const isPvPBattle = window.location.pathname.includes('pvp_battle.php') || 
+                       document.querySelector('#enemyHero') !== null;
+    
+    if (!isPvPBattle) return;
+    
+    const existingBox = document.getElementById('pvp-prediction-box');
+    if (existingBox) {
+      existingBox.remove();
+    }
+    
+    const surrenderBtn = document.getElementById('btnSurrender');
+    if (!surrenderBtn) return;
+    
+    const predictionBox = document.createElement('div');
+    predictionBox.id = 'pvp-prediction-box';
+    predictionBox.style.marginTop = '10px';
+    predictionBox.style.padding = '6px';
+    predictionBox.style.border = '1px solid #666';
+    predictionBox.style.borderRadius = '6px';
+    predictionBox.style.background = '#111';
+    predictionBox.style.color = '#fff';
+    predictionBox.style.fontWeight = 'bold';
+    predictionBox.textContent = '⚔️ Expected Result: calculating...';
+    
+    surrenderBtn.insertAdjacentElement('afterend', predictionBox);
+    pvpBattleData.predictionBox = predictionBox;
+  }
+
+
+  function analyzeBattleState() {
+    pvpBattleData.attackCount++;
+    
+    // Only start analysis after specified number of attacks
+    if (pvpBattleData.attackCount < extensionSettings.pvpAutoSurrender.analyzeAfterAttacks) {
+      return;
+    }
+    
+    updateCurrentHP();
+    
+    const logItems = document.querySelectorAll('#logWrap .log-item');
+    if (logItems.length >= 2) {
+      const lastTwo = Array.from(logItems).slice(-2);
+      updateDamageData(lastTwo);
+    }
+    
+    const winProbability = calculateWinProbability();
+    updatePredictionBox(winProbability);
+    
+    if (winProbability < extensionSettings.pvpAutoSurrender.surrenderThreshold) {
+      setTimeout(() => {
+        performAutoSurrender();
+      }, 2000);
+    }
+  }
+
+  function updateCurrentHP() {
+    const myHpText = document.getElementById('myHpText');
+    const enemyHpText = document.getElementById('enemyHpText');
+    
+    if (myHpText && enemyHpText) {
+      const myHpMatch = myHpText.textContent.match(/(\d+(?:,\d+)*)\s*\/\s*(\d+(?:,\d+)*)/);
+      const enemyHpMatch = enemyHpText.textContent.match(/(\d+(?:,\d+)*)\s*\/\s*(\d+(?:,\d+)*)/);
+      
+      if (myHpMatch && enemyHpMatch) {
+        pvpBattleData.myCurrentHp = parseInt(myHpMatch[1].replace(/,/g, ''));
+        pvpBattleData.enemyCurrentHp = parseInt(enemyHpMatch[1].replace(/,/g, ''));
+      }
+    }
+  }
+
+  function updateDamageData(logItems) {
+    logItems.forEach(item => {
+      const text = item.textContent;
+      const damageMatch = text.match(/\(<strong>(\d+(?:,\d+)*)<\/strong> dmg\)/);
+      
+      if (damageMatch) {
+        const damage = parseInt(damageMatch[1].replace(/,/g, ''));
+        
+        if (text.includes('You')) {
+          pvpBattleData.myDamageDealt += damage;
+        } else {
+          pvpBattleData.enemyDamageDealt += damage;
+        }
+      }
+    });
+  }
+
+  function calculateWinProbability() {
+    const myHpPercent = pvpBattleData.myCurrentHp / pvpBattleData.myMaxHp;
+    const enemyHpPercent = pvpBattleData.enemyCurrentHp / pvpBattleData.enemyMaxHp;
+    
+    const myAvgDamage = pvpBattleData.myDamageDealt / Math.max(1, pvpBattleData.attackCount);
+    const enemyAvgDamage = pvpBattleData.enemyDamageDealt / Math.max(1, pvpBattleData.attackCount);
+    
+    const myAttacksToWin = Math.ceil(pvpBattleData.enemyCurrentHp / myAvgDamage);
+    const enemyAttacksToWin = Math.ceil(pvpBattleData.myCurrentHp / enemyAvgDamage);
+    
+    let winProbability = 0.5;
+    
+    if (myAttacksToWin < enemyAttacksToWin) {
+      winProbability = 0.8;
+    } else if (enemyAttacksToWin < myAttacksToWin) {
+      winProbability = 0.2;
+    } else {
+      if (myHpPercent > enemyHpPercent) {
+        winProbability = 0.6;
+      } else if (enemyHpPercent > myHpPercent) {
+        winProbability = 0.4;
+      }
+    }
+    
+    const hpDifference = myHpPercent - enemyHpPercent;
+    winProbability += hpDifference * 0.3;
+    
+    return Math.max(0, Math.min(1, winProbability));
+  }
+
+  function highlightPvpBattles() {
+    const table = document.querySelector('.table');
+    if (!table) return;
+    
+    const headers = table.querySelector('thead tr');
+    if (headers && !headers.querySelector('th:last-child').textContent.includes('Points')) {
+      const pointsHeader = document.createElement('th');
+      pointsHeader.textContent = 'Points';
+      headers.appendChild(pointsHeader);
+    }
+
+    table.querySelectorAll('tbody tr').forEach(row => {
+      const resultCell = row.querySelector('td:nth-child(3) .rank-badge');
+      if (resultCell) {
+        const isWin = resultCell.textContent.trim() === 'Win';
+        row.style.backgroundColor = isWin ? '#1c2d1c' : '#2d1c1c';
+        row.style.transition = 'background-color 0.3s';
+        
+        const cells = Array.from(row.cells);
+        let pointsCell;
+        
+        if (cells.length < 6) {
+          pointsCell = document.createElement('td');
+          row.appendChild(pointsCell);
+        } else {
+          pointsCell = cells[cells.length - 1];
+        }
+        
+        let points;
+        let isAttacker = false;
+        
+        const battleLink = row.querySelector('a[href*="pvp_battle.php"]');
+        if (battleLink) {
+          isAttacker = true;
+        }
+        
+        const rowText = row.textContent.toLowerCase();
+        if (rowText.includes('attack') || rowText.includes('challenge')) {
+          isAttacker = true;
+        }
+        
+        // Debug: Log the detection for troubleshooting
+        if (!isAttacker && window.location.pathname.includes('pvp.php')) {
+          isAttacker = true;
+        }
+        
+        if (isWin) {
+          // Winner gets +10 (attacker) or +5 (defender)
+          points = isAttacker ? '+10' : '+5';
+        } else {
+          // Loser gets -15 (attacker) or -5 (defender)
+          points = isAttacker ? '-15' : '-5';
+        }
+        
+        // Update points cell content and styling
+        pointsCell.textContent = points;
+        pointsCell.style.color = isWin ? '#8ff0a4' : '#ff9a9a';
+        pointsCell.style.fontWeight = 'bold';
+      }
+    });
+  }
+
+  function updatePredictionBox(winProbability) {
+    const box = document.getElementById('pvp-prediction-box');
+    if (!box) return;
+    
+    const percentage = (winProbability * 100).toFixed(1);
+    let result = '';
+    
+    if (winProbability > 0.5) {
+      result = 'WINNING';
+    } else if (winProbability < 0.5) {
+      result = 'LOSING';
+    } else {
+      result = 'EVEN';
+    }
+    
+    box.textContent = `⚔️ Expected Result: ${result} (${percentage}%)`;
+    
+    // Handle auto-surrender if enabled and probability is low
+    if (extensionSettings.pvpAutoSurrender.enabled && winProbability < extensionSettings.pvpAutoSurrender.surrenderThreshold) {
+      box.textContent += ' ⚠️ Auto-surrender in 2s';
+      box.style.borderColor = '#f38ba8'; // Red border
+      setTimeout(() => performAutoSurrender(), 2000); // Auto-surrender after 2 seconds
+    } else {
+      box.style.borderColor = '#666';
+    }
+  }
+
+  function performAutoSurrender() {
+    const surrenderBtn = document.getElementById('btnSurrender');
+    if (surrenderBtn && !surrenderBtn.disabled) {
+
+      
+      // Show notification
+      if (typeof showNotification === 'function') {
+        showNotification('Auto-surrendering due to low win probability', 'error');
+      }
+      
+      // Override the confirm dialog to automatically return true
+      const originalConfirm = window.confirm;
+      window.confirm = function() { return true; };
+      
+      // Click surrender button
+      surrenderBtn.click();
+      
+      // Restore original confirm function after a short delay
+      setTimeout(() => {
+        window.confirm = originalConfirm;
+      }, 1000);
+    }
+  }
+
+  // Enhanced Quick Access Pinning System - Universal Sidebar Shortcuts
+
+  // INVENTORY QUICK ACCESS FUNCTIONS
+  function addInventoryQuickAccessButtons() {
+      // Only run on inventory page
+      if (!window.location.pathname.includes('inventory.php')) return;
+      
+      let attempts = 0;
+      const maxAttempts = 50;
+    
+    console.log(`📜 Found ${logItems.length} log items:`);
+    
+    // Reset test data
+    const testData = { myDamage: 0, enemyDamage: 0 };
+    
+    logItems.forEach((item, index) => {
+      const text = item.textContent || item.innerText;
+      console.log(`${index + 1}: "${text}"`);
+      
+      const damageMatch = text.match(/\((\d+(?:,\d+)*) dmg\)/);
+      if (damageMatch) {
+        const damage = parseInt(damageMatch[1].replace(/,/g, ''));
+        const attribution = attributeDamage(text, damage);
+        
+        console.log(`  💥 Damage: ${damage}, Attribution: ${attribution}`);
+        
+        if (attribution === 'player') {
+          testData.myDamage += damage;
+        } else if (attribution === 'enemy') {
+          testData.enemyDamage += damage;
+        }
+      } else {
+        console.log(`  ⚪ No damage found`);
+      }
+    });
+    
+    console.log('🎯 Test Results:', testData);
+    return testData;
+  }
+
+  function calculateWinProbability() {
+    if (!pvpBattleData.myMaxHp || !pvpBattleData.enemyMaxHp || 
+        pvpBattleData.myCurrentHp === undefined || pvpBattleData.enemyCurrentHp === undefined) {
+      return 0.5;
+    }
+    
+    const myHpPercent = pvpBattleData.myCurrentHp / pvpBattleData.myMaxHp;
+    const enemyHpPercent = pvpBattleData.enemyCurrentHp / pvpBattleData.enemyMaxHp;
+    
+    console.log('❤️ HP percentages:', { 
+      my: (myHpPercent * 100).toFixed(1) + '%', 
+      enemy: (enemyHpPercent * 100).toFixed(1) + '%'
+    });
+    
+    // Calculate average damage per attack
+    const myAvgDamage = pvpBattleData.myDamageDealt / Math.max(1, pvpBattleData.attackCount);
+    const enemyAvgDamage = pvpBattleData.enemyDamageDealt / Math.max(1, pvpBattleData.attackCount);
+    
+    console.log('⚔️ Average damage per attack:', { 
+      my: myAvgDamage.toFixed(1), 
+      enemy: enemyAvgDamage.toFixed(1) 
+    });
+    
+    // If no damage data yet, use HP percentages only
+    if (myAvgDamage === 0 && enemyAvgDamage === 0) {
+      console.log('📊 No damage data yet, using HP percentages only');
+      const hpBasedProbability = myHpPercent >= enemyHpPercent ? 0.6 : 0.4;
+      console.log('🎯 HP-based probability:', (hpBasedProbability * 100).toFixed(1) + '%');
+      return hpBasedProbability;
+    }
+    
+    // Estimate remaining attacks needed to win/lose
+    const myAttacksToWin = myAvgDamage > 0 ? Math.ceil(pvpBattleData.enemyCurrentHp / myAvgDamage) : Infinity;
+    const enemyAttacksToWin = enemyAvgDamage > 0 ? Math.ceil(pvpBattleData.myCurrentHp / enemyAvgDamage) : Infinity;
+    
+    console.log('🏆 Attacks needed to win:', { 
+      myAttacksToWin: myAttacksToWin === Infinity ? 'Unknown' : myAttacksToWin, 
+      enemyAttacksToWin: enemyAttacksToWin === Infinity ? 'Unknown' : enemyAttacksToWin 
+    });
+    
+    // Calculate win probability based on who needs fewer attacks
+    let winProbability = 0.5; // Default to 50%
+    
+    if (myAttacksToWin < enemyAttacksToWin) {
+      // We need fewer attacks to win
+      winProbability = 0.8;
+    } else if (enemyAttacksToWin < myAttacksToWin) {
+      // Enemy needs fewer attacks to win
+      winProbability = 0.2;
+    } else {
+      // Equal attacks needed - consider HP percentage
+      if (myHpPercent > enemyHpPercent) {
+        winProbability = 0.6;
+      } else if (enemyHpPercent > myHpPercent) {
+        winProbability = 0.4;
+      }
+    }
+    
+    // Adjust based on HP percentage difference
+    const hpDifference = myHpPercent - enemyHpPercent;
+    winProbability += hpDifference * 0.3;
+    
+    // Clamp between 0 and 1
+    return Math.max(0, Math.min(1, winProbability));
+  }
+
+
+  function highlightPvpBattles() {
+    const table = document.querySelector('.table');
+    if (!table) return;
+    
+    // Add points column if it doesn't exist
+    const headers = table.querySelector('thead tr');
+    if (headers && !headers.querySelector('th:last-child').textContent.includes('Points')) {
+      const pointsHeader = document.createElement('th');
+      pointsHeader.textContent = 'Points';
+      headers.appendChild(pointsHeader);
+    }
+
+    // Process each battle row
+    table.querySelectorAll('tbody tr').forEach(row => {
+      // Add row highlighting based on result
+      const resultCell = row.querySelector('td:nth-child(3) .rank-badge');
+      if (resultCell) {
+        const isWin = resultCell.textContent.trim() === 'Win';
+        row.style.backgroundColor = isWin ? '#1c2d1c' : '#2d1c1c';
+        row.style.transition = 'background-color 0.3s';
+        
+        // Get all cells in the row
+        const cells = Array.from(row.cells);
+        let pointsCell;
+        
+        // If there's no points cell yet, create one
+        if (cells.length < 6) {  // If we don't have a points column yet
+          pointsCell = document.createElement('td');
+          row.appendChild(pointsCell);
+        } else {
+          pointsCell = cells[cells.length - 1];  // Use the last cell
+        }
+        
+        // Calculate points based on attacker/defender role and win/loss
+        let points;
+        let isAttacker = false;
+        
+        // Read the actual Role column to determine attacker/defender
+        const rowCells = row.querySelectorAll('td');
+        let roleText = '';
+        
+        // Find the role column (usually contains "Attacker" or "Defender")
+        for (let i = 0; i < rowCells.length; i++) {
+          const cellText = rowCells[i].textContent.toLowerCase().trim();
+          if (cellText === 'attacker' || cellText === 'defender') {
+            roleText = cellText;
+            break;
+          }
+        }
+        
+        // Determine if attacker based on role column
+        isAttacker = (roleText === 'attacker');
+        
+
+        
+        if (isWin) {
+          // Winner gets +15 (attacker) or +5 (defender)
+          points = isAttacker ? '+15' : '+5';
+        } else {
+          // Loser gets -15 (attacker) or -5 (defender)
+          points = isAttacker ? '-15' : '-5';
+        }
+        
+        // Update points cell content and styling
+        pointsCell.textContent = points;
+        pointsCell.style.color = isWin ? '#8ff0a4' : '#ff9a9a';
+        pointsCell.style.fontWeight = 'bold';
+      }
+    });
+  }
+
+  function updatePredictionBox(winProbability) {
+    const box = document.getElementById('pvp-prediction-box');
+    if (!box) {
+      return;
+    }
+    
+    if (isNaN(winProbability) || winProbability < 0 || winProbability > 1) {
+      box.textContent = '⚔️ Expected Result: Invalid data';
+      return;
+    }
+    
+    const percentage = (winProbability * 100).toFixed(1);
+    let result = '';
+    
+    if (winProbability > 0.5) {
+      result = 'WINNING';
+    } else if (winProbability < 0.5) {
+      result = 'LOSING';
+    } else {
+      result = 'EVEN';
+    }
+    
+    const resultText = `⚔️ Expected Result: ${result} (${percentage}%)`;
+    box.textContent = resultText;
+    
+    // Handle auto-surrender if enabled and probability is low
+    if (extensionSettings.pvpAutoSurrender.enabled && winProbability < extensionSettings.pvpAutoSurrender.surrenderThreshold) {
+      box.textContent += ' ⚠️ Auto-surrender in 2s';
+      box.style.borderColor = '#f38ba8'; // Red border
+      setTimeout(() => performAutoSurrender(), 2000); // Auto-surrender after 2 seconds
+    } else {
+      box.style.borderColor = '#666';
     }
   }
 
@@ -1150,14 +4999,169 @@
     
     if (limitInput) {
       limitInput.value = extensionSettings.pinnedItemsLimit;
-      console.log('Pinned items limit:', extensionSettings.pinnedItemsLimit);
       limitInput.addEventListener('change', (e) => {
         const value = Math.max(1, Math.min(10, parseInt(e.target.value) || 3));
         extensionSettings.pinnedItemsLimit = value;
-        e.target.value = value; // Ensure value is within bounds
-        console.log('Pinned items limit changed to:', extensionSettings.pinnedItemsLimit);
+        e.target.value = value;
         saveSettings();
       });
+    }
+  }
+
+  function addBattleHideImagesToggle() {
+    
+    // Check if filter container already exists
+    if (document.getElementById('battle-filter-container')) {
+      return;
+    }
+    
+    // Create the filter container
+    const filterContainer = document.createElement('div');
+    filterContainer.id = 'battle-filter-container';
+    filterContainer.style.cssText = `
+      padding: 10px;
+      background: rgb(45, 45, 61);
+      border-radius: 5px;
+      margin-bottom: 15px;
+      display: flex;
+      gap: 10px;
+      align-items: center;
+      justify-content: center;
+      flex-wrap: wrap;
+    `;
+    
+    filterContainer.innerHTML = `
+      <div style="display: flex; flex-wrap: wrap; gap: 10px; align-items: flex-start; justify-content: center; width: 100%;">
+        <label style="display: flex; align-items: center; gap: 5px; color: #cdd6f4;">
+            <input type="checkbox" id="battle-hide-images-toggle" class="cyberpunk-checkbox" ${extensionSettings.battlePageHideImages ? 'checked' : ''}>
+          🖼️ Hide all images
+        </label>
+        
+        <button id="battle-clear-filters" style="padding: 5px 10px; background: #f38ba8; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 12px;">
+          Reset
+        </button>
+      </div>
+    `;
+    
+    // Find where to insert the filter container
+    const contentArea = document.querySelector('.content-area, .main-content, .game-content');
+    if (contentArea) {
+      // Insert at the top of the content area
+      contentArea.insertBefore(filterContainer, contentArea.firstChild);
+    } else {
+      // Fallback: insert after the back button
+      const backButton = document.querySelector('a[href*="active_wave.php"]');
+      if (backButton && backButton.parentElement) {
+        backButton.parentElement.insertBefore(filterContainer, backButton.nextSibling);
+      }
+    }
+    
+    // Add event listeners
+    const hideImagesCheckbox = document.getElementById('battle-hide-images-toggle');
+    const clearButton = document.getElementById('battle-clear-filters');
+    
+    if (hideImagesCheckbox) {
+      hideImagesCheckbox.addEventListener('change', function() {
+        extensionSettings.battlePageHideImages = this.checked;
+        saveSettings();
+        applyBattleImageSettings();
+        
+        showNotification(extensionSettings.battlePageHideImages ? 'All images hidden' : 'All images shown', 'success');
+      });
+    }
+    
+    if (clearButton) {
+      clearButton.addEventListener('click', function() {
+        extensionSettings.battlePageHideImages = true;
+        saveSettings();
+        applyBattleImageSettings();
+        
+        if (hideImagesCheckbox) {
+          hideImagesCheckbox.checked = false;
+        }
+        
+        showNotification('Battle filters reset', 'success');
+      });
+    }
+    
+    // Apply initial state based on current setting
+    applyBattleImageSettings();
+    
+
+  }
+
+
+  function applyBattleImageSettings() {
+    const isBattlePage = window.location.pathname.includes('battle.php');
+    if (!isBattlePage) return;
+    
+    if (extensionSettings.battlePageHideImages) {
+      document.body.classList.add('battle-images-hidden');
+    } else {
+      document.body.classList.remove('battle-images-hidden');
+    }
+  }
+
+  function createTopbarSettingsButton() {
+    const topbarRight = document.querySelector('.gtb-right');
+    if (!topbarRight || document.querySelector('.topbar-settings-btn')) return;
+    
+    const settingsButton = document.createElement('button');
+    settingsButton.className = 'topbar-settings-btn';
+    settingsButton.innerHTML = `
+      <svg viewBox="0 0 24 24" fill="currentColor">
+        <path d="M12,15.5A3.5,3.5 0 0,1 8.5,12A3.5,3.5 0 0,1 12,8.5A3.5,3.5 0 0,1 15.5,12A3.5,3.5 0 0,1 12,15.5M19.43,12.97C19.47,12.65 19.5,12.33 19.5,12C19.5,11.67 19.47,11.34 19.43,11L21.54,9.37C21.73,9.22 21.78,8.95 21.66,8.73L19.66,5.27C19.54,5.05 19.27,4.96 19.05,5.05L16.56,6.05C16.04,5.66 15.5,5.32 14.87,5.07L14.5,2.42C14.46,2.18 14.25,2 14,2H10C9.75,2 9.54,2.18 9.5,2.42L9.13,5.07C8.5,5.32 7.96,5.66 7.44,6.05L4.95,5.05C4.73,4.96 4.46,5.05 4.34,5.27L2.34,8.73C2.22,8.95 2.27,9.22 2.46,9.37L4.57,11C4.53,11.34 4.5,11.67 4.5,12C4.5,12.33 4.53,12.65 4.57,12.97L2.46,14.63C2.27,14.78 2.22,15.05 2.34,15.27L4.34,18.73C4.46,18.95 4.73,19.03 4.95,18.95L7.44,17.94C7.96,18.34 8.5,18.68 9.13,18.93L9.5,21.58C9.54,21.82 9.75,22 10,22H14C14.25,22 14.46,21.82 14.5,21.58L14.87,18.93C15.5,18.68 16.04,18.34 16.56,17.94L19.05,18.95C19.27,19.03 19.54,18.95 19.66,18.73L21.66,15.27C21.78,15.05 21.73,14.78 21.54,14.63L19.43,12.97Z"/>
+      </svg>
+      <span>Settings</span>
+    `;
+    
+    settingsButton.addEventListener('click', function() {
+      this.style.transform = 'scale(0.95)';
+      setTimeout(() => {
+        this.style.transform = 'scale(1)';
+      }, 150);
+      
+      showSettingsModal();
+    });
+    
+    // Position it at the very end of the topbar
+    topbarRight.appendChild(settingsButton);
+    console.log('Topbar settings button added');
+  }
+
+  function createBackToDashboardButton() {
+    const topbarInner = document.querySelector('.gtb-inner');
+    if (!topbarInner || document.querySelector('.back-to-dashboard-btn')) return;
+    
+    const backButton = document.createElement('a');
+    backButton.className = 'back-to-dashboard-btn';
+    backButton.href = 'game_dash.php';
+    backButton.innerHTML = `
+      <svg viewBox="0 0 24 24" fill="currentColor" style="width: 12px; height: 12px;">
+        <path d="M20,11V13H8L13.5,18.5L12.08,19.92L4.16,12L12.08,4.08L13.5,5.5L8,11H20Z"/>
+      </svg>
+    `;
+    backButton.title = 'Back to Dashboard';
+    
+    // Position it in the left section before stamina
+    const gtbLeft = topbarInner.querySelector('.gtb-left');
+    if (gtbLeft) {
+      // Insert at the very beginning of gtb-left (before stamina)
+      gtbLeft.insertBefore(backButton, gtbLeft.firstChild);
+    } else {
+      // Fallback: position at the beginning
+      topbarInner.insertBefore(backButton, topbarInner.firstChild);
+    }
+    
+    console.log('Back to Dashboard button added to topbar left');
+  }
+
+  function removeOriginalBackButton() {
+    // Remove the specific back button from page content
+    const backButton = document.querySelector('a[href="game_dash.php"][class="btn"]');
+    if (backButton && backButton.textContent.includes('⬅ Back to Dashboard')) {
+      backButton.remove();
+      console.log('Original back to dashboard button removed from page content');
     }
   }
 
@@ -1165,44 +5169,300 @@
     const modal = document.getElementById('settings-modal');
     if (!modal) return;
 
-    // Close button
-    modal.querySelector('.settings-button[data-action="close"]')?.addEventListener('click', (e) => {
-      e.preventDefault();
-      e.stopPropagation();
-      closeSettingsModal();
+    // Add collapsible functionality to all sections 
+    modal.querySelectorAll('.settings-section').forEach(section => {
+      if (!section.querySelector('.settings-section-header')) {
+        // Add header wrapper if missing
+        const title = section.querySelector('h3');
+        if (title) {
+          const content = section.innerHTML;
+          const header = document.createElement('div'); 
+          header.className = 'settings-section-header';
+          header.innerHTML = `
+            <h3>${title.textContent}</h3>
+            <span class="expand-icon">–</span>
+          `;
+          section.innerHTML = '';
+          section.appendChild(header);
+
+          const contentDiv = document.createElement('div');
+          contentDiv.className = 'settings-section-content expanded';
+          contentDiv.innerHTML = content.replace(title.outerHTML, '');
+          section.appendChild(contentDiv);
+        }
+      }
+
+      const header = section.querySelector('.settings-section-header');
+      const content = section.querySelector('.settings-section-content');
+      const icon = header?.querySelector('.expand-icon');
+
+      if (header && content && icon) {
+        header.addEventListener('click', () => {
+          const isExpanded = content.classList.contains('expanded');
+          content.classList.toggle('expanded');
+          icon.textContent = isExpanded ? '+' : '–';
+        });
+      }
     });
 
-    // Reset button
-    modal.querySelector('.settings-button[data-action="reset"]')?.addEventListener('click', (e) => {
-      e.preventDefault();
-      e.stopPropagation();
-      resetSettings();
-    });
-
-    // Clear All Data button
-    modal.querySelector('.settings-button[data-action="clear"]')?.addEventListener('click', (e) => {
-      e.preventDefault();
-      e.stopPropagation();
-      clearAllData();
+    // Use event delegation for all modal buttons
+    document.addEventListener('click', (e) => {
+      if (e.target && e.target.classList.contains('settings-button')) {
+        const action = e.target.getAttribute('data-action');
+        
+        switch (action) {
+          case 'close':
+            e.preventDefault();
+            e.stopPropagation();
+            closeSettingsModal();
+            break;
+          case 'reset':
+            e.preventDefault();
+            e.stopPropagation();
+            resetSettings();
+            break;
+          case 'clear':
+            e.preventDefault();
+            e.stopPropagation();
+            clearAllData();
+            break;
+        }
+      }
     });
   }
 
   function updateColorSelections() {
-    document.querySelectorAll('.color-option').forEach(option => {
-      option.classList.remove('selected');
-    });
-
-    document.querySelectorAll('#sidebar-colors .color-option').forEach(option => {
-      if (option.dataset.color === extensionSettings.sidebarColor) {
-        option.classList.add('selected');
+      // Update sidebar color input
+      const sidebarColorInput = document.getElementById('sidebar-custom-color');
+      if (sidebarColorInput) {
+        sidebarColorInput.value = extensionSettings.sidebarColor;
       }
-    });
 
-    document.querySelectorAll('#background-colors .color-option').forEach(option => {
-      if (option.dataset.color === extensionSettings.backgroundColor) {
-        option.classList.add('selected');
+      // Update background color input
+      const backgroundColorInput = document.getElementById('background-custom-color');
+      if (backgroundColorInput) {
+        backgroundColorInput.value = extensionSettings.backgroundColor;
       }
+
+      // Update monster image outline color input
+      const monsterImageColorInput = document.getElementById('monster-image-custom-color');
+      if (monsterImageColorInput) {
+        monsterImageColorInput.value = extensionSettings.monsterImageOutlineColor;
+      }
+
+      // Update loot card border color input
+      const lootCardColorInput = document.getElementById('loot-card-custom-color');
+      if (lootCardColorInput) {
+        lootCardColorInput.value = extensionSettings.lootCardBorderColor;
+      }
+  }
+
+  // Menu Customization Functions - Make them globally accessible
+  window.toggleMenuCustomization = function() {
+    extensionSettings.menuCustomizationExpanded = !extensionSettings.menuCustomizationExpanded;
+    const content = document.getElementById('menu-customization-content');
+    const icon = document.getElementById('menu-customization-icon');
+    
+    if (content && icon) {
+      content.style.display = extensionSettings.menuCustomizationExpanded ? 'block' : 'none';
+      icon.textContent = extensionSettings.menuCustomizationExpanded ? '–' : '+';
+      
+      if (extensionSettings.menuCustomizationExpanded) {
+        populateMenuItemsList();
+      }
+    }
+    
+    saveSettings();
+  };
+
+  function populateMenuItemsList() {
+    const container = document.getElementById('menu-items-list');
+    if (!container) return;
+
+    // Sort menu items by order
+    const sortedItems = [...extensionSettings.menuItems].sort((a, b) => a.order - b.order);
+    
+    container.innerHTML = '';
+    
+    sortedItems.forEach((item, index) => {
+      const row = document.createElement('div');
+      row.className = 'menu-item-row';
+      row.draggable = true;
+      row.dataset.itemId = item.id;
+      
+      row.innerHTML = `
+        <div class="drag-handle" title="Drag to reorder">⋮⋮</div>
+        <div class="menu-item-name">${item.name}</div>
+        <div class="menu-item-controls">
+          <div class="menu-item-toggle ${item.visible ? 'active' : ''}" data-item-id="${item.id}"></div>
+          <div class="menu-item-arrows">
+            <button class="arrow-btn" data-item-id="${item.id}" data-direction="up" ${index === 0 ? 'disabled' : ''}>▲</button>
+            <button class="arrow-btn" data-item-id="${item.id}" data-direction="down" ${index === sortedItems.length - 1 ? 'disabled' : ''}>▼</button>
+          </div>
+        </div>
+      `;
+      
+      // Add drag and drop event listeners
+      row.addEventListener('dragstart', handleDragStart);
+      row.addEventListener('dragover', handleDragOver);
+      row.addEventListener('drop', handleDrop);
+      row.addEventListener('dragend', handleDragEnd);
+      
+      // Add toggle event listener
+      const toggle = row.querySelector('.menu-item-toggle');
+      toggle.addEventListener('click', function() {
+        const itemId = this.dataset.itemId;
+        toggleMenuItemVisibility(itemId);
+      });
+      
+      // Add arrow button event listeners
+      const arrowButtons = row.querySelectorAll('.arrow-btn');
+      arrowButtons.forEach(button => {
+        button.addEventListener('click', function() {
+          const itemId = this.dataset.itemId;
+          const direction = this.dataset.direction;
+          moveMenuItem(itemId, direction);
+        });
+      });
+      
+      container.appendChild(row);
     });
+  }
+
+  window.toggleMenuItemVisibility = function(itemId) {
+    const item = extensionSettings.menuItems.find(i => i.id === itemId);
+    if (item) {
+      item.visible = !item.visible;
+      saveSettings();
+      populateMenuItemsList(); // Refresh the list
+    }
+  };
+
+  window.moveMenuItem = function(itemId, direction) {
+    const sortedItems = [...extensionSettings.menuItems].sort((a, b) => a.order - b.order);
+    const currentIndex = sortedItems.findIndex(item => item.id === itemId);
+    
+    if (currentIndex === -1) return;
+    
+    const newIndex = direction === 'up' ? currentIndex - 1 : currentIndex + 1;
+    
+    if (newIndex < 0 || newIndex >= sortedItems.length) return;
+    
+    // Swap the items
+    [sortedItems[currentIndex], sortedItems[newIndex]] = [sortedItems[newIndex], sortedItems[currentIndex]];
+    
+    // Update the order values
+    sortedItems.forEach((item, index) => {
+      item.order = index;
+    });
+    
+    saveSettings();
+    populateMenuItemsList(); // Refresh the list
+  };
+
+  // Drag and Drop Functions
+  let draggedElement = null;
+
+  function handleDragStart(e) {
+    draggedElement = this;
+    this.classList.add('dragging');
+    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setData('text/html', this.outerHTML);
+  }
+
+  function handleDragOver(e) {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    
+    if (this !== draggedElement) {
+      this.classList.add('drag-over');
+    }
+  }
+
+  function handleDrop(e) {
+    e.preventDefault();
+    this.classList.remove('drag-over');
+    
+    if (this !== draggedElement) {
+      const draggedId = draggedElement.dataset.itemId;
+      const targetId = this.dataset.itemId;
+      
+      // Find the items in the settings
+      const draggedItem = extensionSettings.menuItems.find(item => item.id === draggedId);
+      const targetItem = extensionSettings.menuItems.find(item => item.id === targetId);
+      
+      if (draggedItem && targetItem) {
+        // Swap the order values
+        const tempOrder = draggedItem.order;
+        draggedItem.order = targetItem.order;
+        targetItem.order = tempOrder;
+        
+        saveSettings();
+        populateMenuItemsList(); // Refresh the list
+      }
+    }
+  }
+
+  function handleDragEnd(e) {
+    this.classList.remove('dragging');
+    document.querySelectorAll('.menu-item-row').forEach(row => {
+      row.classList.remove('drag-over');
+    });
+    draggedElement = null;
+  }
+
+  window.resetMenuCustomization = function() {
+    // Reset to default menu items
+    extensionSettings.menuItems = [
+      { id: 'pvp', name: 'PvP Arena', visible: true, order: 0 },
+      { id: 'orc_cull', name: 'War Drums of GRAKTHAR', visible: true, order: 1 },
+      { id: 'event_battlefield', name: 'Event Battlefield', visible: true, order: 2 },
+      { id: 'gate_grakthar', name: 'Gate Grakthar', visible: true, order: 3 },
+      { id: 'inventory', name: 'Inventory & Equipment', visible: true, order: 4 },
+      { id: 'pets', name: 'Pets & Eggs', visible: true, order: 5 },
+      { id: 'stats', name: 'Stats', visible: true, order: 6 },
+      { id: 'blacksmith', name: 'Blacksmith', visible: true, order: 7 },
+      { id: 'merchant', name: 'Merchant', visible: true, order: 8 },
+      { id: 'inventory_quick', name: 'Inventory Quick Access', visible: true, order: 9 },
+      { id: 'achievements', name: 'Achievements', visible: true, order: 10 },
+      { id: 'collections', name: 'Collections', visible: true, order: 11 },
+      { id: 'guide', name: 'How To Play', visible: true, order: 12 },
+      { id: 'leaderboard', name: 'Weekly Leaderboard', visible: true, order: 13 },
+      { id: 'chat', name: 'Global Chat', visible: true, order: 14 },
+      { id: 'patches', name: 'Patch Notes', visible: true, order: 15 },
+      { id: 'manga', name: 'Manga-Manhwa-Manhua', visible: true, order: 16 },
+      { id: 'settings', name: 'Settings', visible: true, order: 17 }
+    ];
+    
+    saveSettings();
+    populateMenuItemsList();
+    showNotification('Menu customization reset to default', 'success');
+  };
+
+  window.applyMenuCustomization = function() {
+    saveSettings();
+    refreshSidebar();
+    showNotification('Menu customization applied!', 'success');
+  };
+
+  function refreshSidebar() {
+    const sidebar = document.getElementById('game-sidebar');
+    if (sidebar) {
+      const menuList = sidebar.querySelector('.sidebar-menu');
+      if (menuList) {
+        menuList.innerHTML = generateMenuItems();
+        // Re-initialize sidebar functionality after refresh
+        initSidebarFunctionality();
+      }
+    }
+  }
+
+  function initSidebarFunctionality() {
+    // Re-initialize all sidebar event listeners and functionality
+    setupSidebarToggle();
+    setupExpandButtons();
+    setupSettingsLink();
+    // Add other sidebar functionality as needed
   }
 
   function closeSettingsModal() {
@@ -1324,6 +5584,7 @@
   }
 
   // MAIN INITIALIZATION
+
   if (document.querySelector('.game-topbar')) {
     if (document.readyState === 'loading') {
       document.addEventListener('DOMContentLoaded', () => safeExecute(initializeExtension, 'DOMContentLoaded'));
@@ -1332,8 +5593,21 @@
     }
   }
 
+  // Also apply background images when window is fully loaded
+  window.addEventListener('load', () => {
+    setTimeout(() => {
+        safeExecute(() => applyCustomBackgrounds(), 'Window Load Background Images');
+    }, 300);
+  });
+
   function initializeExtension() {
     console.log('Demon Game Enhancement v3.0 - Initializing...');
+      
+      // Clean up any existing observers
+      if (window.backgroundObserver) {
+        window.backgroundObserver.disconnect();
+        window.backgroundObserver = null;
+      }
     
     // Load settings first
     safeExecute(() => loadSettings(), 'Load Settings');
@@ -1347,6 +5621,17 @@
     // Initialize page-specific functionality
     safeExecute(() => initPageSpecificFunctionality(), 'Page-Specific Functionality');
     
+    
+    // Update sidebar quantities on all pages
+    setTimeout(() => {
+      safeExecute(() => updateSidebarInventorySection(), 'Sidebar Quantities');
+    }, 1000);
+    
+    // Apply background images after a short delay to ensure DOM is ready
+    setTimeout(() => {
+        safeExecute(() => applyCustomBackgrounds(), 'Background Images');
+    }, 200);
+    
     console.log('Demon Game Enhancement v3.0 - Initialization Complete!');
     console.log('Type debugExtension() in console for debug info');
   }
@@ -1355,13 +5640,46 @@
   function initPageSpecificFunctionality() {
     const currentPath = window.location.pathname;
 
-    for (const [path, handler] of Object.entries(extensionPageHandlers)) {
+    for (const [path, handlers] of Object.entries(extensionPageHandlers)) {
       if (currentPath.includes(path)) {
         console.log(`Initializing ${path} functionality`);
-        handler();
-        break;
+        if (Array.isArray(handlers)) {
+          handlers.forEach(handler => handler());
+        } else {
+          handlers();
+        }
       }
     }
+
+      // Initialize universal loot card highlighting
+      initUniversalLootHighlighting();
+
+      // Apply custom backgrounds
+      applyCustomBackgrounds();
+      
+      // Apply monster backgrounds
+      applyMonsterBackgrounds();
+      
+      // Initialize monster background observer for dynamic updates
+      initMonsterBackgroundObserver();
+
+      // Apply background images for supported pages with better timing
+    setTimeout(() => {
+        applyCustomBackgrounds();
+        applyMonsterBackgrounds();
+      }, 200);
+      
+      // Also try again after a longer delay to ensure elements are loaded
+      setTimeout(() => {
+        applyCustomBackgrounds();
+        applyMonsterBackgrounds();
+      }, 1000);
+      
+      // Try one more time after a longer delay for slow-loading pages
+      setTimeout(() => {
+        applyCustomBackgrounds();
+        applyMonsterBackgrounds();
+      }, 2000);
   }
 
   // Enhanced Quick Access Pinning System - Universal Sidebar Shortcuts
@@ -1634,7 +5952,14 @@
           if (result.includes('successfully') || result.includes('Item consumed') || result.includes('success')) {
               showNotification(`✅ Used ${quantity}x ${itemName}`, 'success');
               
-              // Update sidebar quantities
+              // Update sidebar quantities - find the item element and update it
+              const sidebarItems = document.querySelectorAll('.quick-access-item');
+              const targetItem = Array.from(sidebarItems).find(item => 
+                item.dataset.itemName === itemName
+              );
+              if (targetItem) {
+                updateSidebarItemQuantity(targetItem, quantity);
+              }
               setTimeout(() => {
                   updateSidebarInventorySection();
                   fetchAndUpdateSidebarStats();
@@ -1677,6 +6002,37 @@
           showNotification(`${action} failed - script error`, 'error');
           console.error('Inventory action error:', error);
       }
+  }
+
+  // Function to update sidebar item quantity after use
+  function updateSidebarItemQuantity(itemElement, usedQuantity) {
+    if (!itemElement) return;
+    
+    const statsElement = itemElement.querySelector('.qa-item-stats');
+    if (!statsElement) return;
+    
+    // Extract current quantity from "Available: X" text
+    const currentText = statsElement.textContent;
+    const match = currentText.match(/Available:\s*(\d+)/);
+    
+    if (match) {
+      const currentQuantity = parseInt(match[1]);
+      const newQuantity = Math.max(0, currentQuantity - usedQuantity);
+      
+      // Update the display
+      statsElement.textContent = `Available: ${newQuantity}`;
+      
+      // If quantity reaches 0, disable use buttons
+      if (newQuantity === 0) {
+        const useButtons = itemElement.querySelectorAll('.qa-use-btn, .qa-use-multiple-btn');
+        useButtons.forEach(btn => {
+          btn.disabled = true;
+          btn.style.opacity = '0.5';
+        });
+      }
+      
+      console.log(`Updated ${itemElement.dataset.itemName} quantity: ${currentQuantity} → ${newQuantity}`);
+    }
   }
 
   // MERCHANT QUICK ACCESS FUNCTIONS
@@ -1916,12 +6272,6 @@
       <input type="text" id="monster-name-filter" placeholder="Filter by name"
                style="padding: 5px; background: #1e1e2e; color: #cdd6f4; border: 1px solid #45475a; border-radius: 4px; min-width: 150px;">
         
-        <select id="wave-filter" style="padding: 5px; background: #1e1e2e; color: #cdd6f4; border: 1px solid #45475a; border-radius: 4px; min-width: 100px;">
-          <option value="">All Waves</option>
-          <option value="wave1">Wave 1 Only</option>
-          <option value="wave2">Wave 2 Only</option>
-        </select>
-        
         <div style="position: relative; display: inline-block;">
           <button id="monster-type-toggle" style="padding: 5px 10px; background: #1e1e2e; color: #cdd6f4; border: 1px solid #45475a; border-radius: 4px; cursor: pointer; min-width: 120px; text-align: left;">
             Monster Types ▼
@@ -1929,32 +6279,48 @@
           <div id="monster-type-dropdown" style="display: none; position: absolute; top: 100%; left: 0; background: #1e1e2e; border: 1px solid #45475a; border-radius: 4px; padding: 10px; z-index: 1000; min-width: 200px; max-height: 200px; overflow-y: auto;">
             <div style="margin-bottom: 8px; font-weight: bold; color: #cba6f7; border-bottom: 1px solid #45475a; padding-bottom: 5px;">Wave 1 Monsters</div>
             <label style="display: block; margin: 3px 0; color: #cdd6f4; font-size: 12px;">
-              <input type="checkbox" value="Orc Grunt" class="monster-type-checkbox"> Orc Grunt
+                <input type="checkbox" value="Orc Grunt" class="monster-type-checkbox cyberpunk-checkbox"> Orc Grunt
       </label>
             <label style="display: block; margin: 3px 0; color: #cdd6f4; font-size: 12px;">
-              <input type="checkbox" value="Orc Bonecrusher" class="monster-type-checkbox"> Orc Bonecrusher
+                <input type="checkbox" value="Orc Bonecrusher" class="monster-type-checkbox cyberpunk-checkbox"> Orc Bonecrusher
             </label>
             <label style="display: block; margin: 3px 0; color: #cdd6f4; font-size: 12px;">
-              <input type="checkbox" value="Hobogoblin Spearman" class="monster-type-checkbox"> Hobogoblin Spearman
+                <input type="checkbox" value="Hobgoblin Spearman" class="monster-type-checkbox cyberpunk-checkbox"> Hobgoblin Spearman
             </label>
             <label style="display: block; margin: 3px 0; color: #cdd6f4; font-size: 12px;">
-              <input type="checkbox" value="Goblin Slinger" class="monster-type-checkbox"> Goblin Slinger
+                <input type="checkbox" value="Goblin Slinger" class="monster-type-checkbox cyberpunk-checkbox"> Goblin Slinger
             </label>
             <label style="display: block; margin: 3px 0; color: #cdd6f4; font-size: 12px;">
-              <input type="checkbox" value="Goblin Skirmisher" class="monster-type-checkbox"> Goblin Skirmisher
+                <input type="checkbox" value="Goblin Skirmisher" class="monster-type-checkbox cyberpunk-checkbox"> Goblin Skirmisher
             </label>
             <div style="margin: 8px 0; font-weight: bold; color: #cba6f7; border-bottom: 1px solid #45475a; padding-bottom: 5px;">Wave 2 Monsters</div>
             <label style="display: block; margin: 3px 0; color: #cdd6f4; font-size: 12px;">
-              <input type="checkbox" value="Lizardman Shadowclaw" class="monster-type-checkbox"> Lizardman Shadowclaw
+                <input type="checkbox" value="Lizardman Shadowclaw" class="monster-type-checkbox cyberpunk-checkbox"> Lizardman Shadowclaw
             </label>
             <label style="display: block; margin: 3px 0; color: #cdd6f4; font-size: 12px;">
-              <input type="checkbox" value="Troll Brawler" class="monster-type-checkbox"> Troll Brawler
+                <input type="checkbox" value="Troll Brawler" class="monster-type-checkbox cyberpunk-checkbox"> Troll Brawler
             </label>
             <label style="display: block; margin: 3px 0; color: #cdd6f4; font-size: 12px;">
-              <input type="checkbox" value="Lizardman Flamecaster" class="monster-type-checkbox"> Lizardman Flamecaster
+                <input type="checkbox" value="Lizardman Flamecaster" class="monster-type-checkbox cyberpunk-checkbox"> Lizardman Flamecaster
             </label>
             <label style="display: block; margin: 3px 0; color: #cdd6f4; font-size: 12px;">
-              <input type="checkbox" value="Troll Ravager" class="monster-type-checkbox"> Troll Ravager
+                <input type="checkbox" value="Troll Ravager" class="monster-type-checkbox cyberpunk-checkbox"> Troll Ravager
+            </label>
+            <div style="margin: 8px 0; font-weight: bold; color: #cba6f7; border-bottom: 1px solid #45475a; padding-bottom: 5px;">EventWave Monsters</div>
+            <label style="display: block; margin: 3px 0; color: #cdd6f4; font-size: 12px;">
+                <input type="checkbox" value="Orc Berserker" class="monster-type-checkbox cyberpunk-checkbox"> Orc Berserker
+            </label>
+            <label style="display: block; margin: 3px 0; color: #cdd6f4; font-size: 12px;">
+                <input type="checkbox" value="Orc Grunt of Grakthar" class="monster-type-checkbox cyberpunk-checkbox"> Orc Grunt of Grakthar
+            </label>
+            <label style="display: block; margin: 3px 0; color: #cdd6f4; font-size: 12px;">
+                <input type="checkbox" value="Orc Archer" class="monster-type-checkbox cyberpunk-checkbox"> Orc Archer
+            </label>
+            <label style="display: block; margin: 3px 0; color: #cdd6f4; font-size: 12px;">
+                <input type="checkbox" value="Orc Raider of Grakthar" class="monster-type-checkbox cyberpunk-checkbox"> Orc Raider of Grakthar
+            </label>
+            <label style="display: block; margin: 3px 0; color: #cdd6f4; font-size: 12px;">
+                <input type="checkbox" value="Orc Shaman" class="monster-type-checkbox cyberpunk-checkbox"> Orc Shaman
             </label>
             <div style="margin-top: 8px; padding-top: 5px; border-top: 1px solid #45475a;">
               <button id="select-all-monsters" style="padding: 3px 8px; background: #a6e3a1; color: #1e1e2e; border: none; border-radius: 3px; cursor: pointer; font-size: 11px; margin-right: 5px;">Select All</button>
@@ -1980,15 +6346,15 @@
         </select>
         
       <label style="display: flex; align-items: center; gap: 5px; color: #cdd6f4;">
-        <input type="checkbox" id="hide-img-monsters">
+          <input type="checkbox" id="hide-img-monsters" class="cyberpunk-checkbox">
         Hide images
       </label>
         
       <label style="display: flex; align-items: center; gap: 5px; color: #cdd6f4;">
-        <input type="checkbox" id="battle-limit-alarm">
+          <input type="checkbox" id="battle-limit-alarm" class="cyberpunk-checkbox">
         Battle limit alarm
         <br>
-        <input type="checkbox" id="battle-limit-alarm-sound" checked>
+          <input type="checkbox" id="battle-limit-alarm-sound" class="cyberpunk-checkbox" checked>
         <label for="battle-limit-alarm-sound" style="color: #cdd6f4; font-size: 12px;">🔊 Play alarm sound</label>
         <br>
         <div style="display: flex; align-items: center; gap: 5px; margin-top: 5px;">
@@ -2012,7 +6378,6 @@
 
     // Add event listeners for all filter elements
     document.getElementById('monster-name-filter').addEventListener('input', applyMonsterFilters);
-    document.getElementById('wave-filter').addEventListener('change', applyMonsterFilters);
     document.getElementById('hp-filter').addEventListener('change', applyMonsterFilters);
     document.getElementById('player-count-filter').addEventListener('change', applyMonsterFilters);
     document.getElementById('hide-img-monsters').addEventListener('change', applyMonsterFilters);
@@ -2077,7 +6442,6 @@
 
     // Initialize filter values from settings
     if (settings.nameFilter) document.getElementById('monster-name-filter').value = settings.nameFilter;
-    if (settings.waveFilter) document.getElementById('wave-filter').value = settings.waveFilter;
     if (settings.hpFilter) document.getElementById('hp-filter').value = settings.hpFilter;
     if (settings.playerCountFilter) document.getElementById('player-count-filter').value = settings.playerCountFilter;
     if (settings.hideImg) document.getElementById('hide-img-monsters').checked = settings.hideImg;
@@ -2108,14 +6472,13 @@
     }
 
     // Apply filters if any are set
-    if (settings.nameFilter || (settings.monsterTypeFilter && settings.monsterTypeFilter.length > 0) || settings.waveFilter || settings.hpFilter || settings.playerCountFilter || settings.hideImg || settings.battleLimitAlarm) {
+    if (settings.nameFilter || (settings.monsterTypeFilter && settings.monsterTypeFilter.length > 0) || settings.hpFilter || settings.playerCountFilter || settings.hideImg || settings.battleLimitAlarm) {
       applyMonsterFilters();
     }
   }
 
   function applyMonsterFilters() {
     const nameFilter = document.getElementById('monster-name-filter').value.toLowerCase();
-    const waveFilter = document.getElementById('wave-filter').value;
     const hpFilter = document.getElementById('hp-filter').value;
     const playerCountFilter = document.getElementById('player-count-filter').value;
     const hideImg = document.getElementById('hide-img-monsters').checked;
@@ -2174,14 +6537,7 @@
         shouldShow = false;
       }
 
-      // Wave filter
-      if (waveFilter) {
-        if (waveFilter === 'wave1' && monsterWave !== 1) {
-          shouldShow = false;
-        } else if (waveFilter === 'wave2' && monsterWave !== 2) {
-          shouldShow = false;
-        }
-      }
+      // Wave filter (removed - no longer used)
 
       // Monster type filter (multiple selection)
       if (selectedMonsterTypes.length > 0) {
@@ -2258,7 +6614,6 @@
     const settings = {
       nameFilter: document.getElementById('monster-name-filter').value,
       monsterTypeFilter: selectedMonsterTypes,
-      waveFilter: document.getElementById('wave-filter').value,
       hpFilter: document.getElementById('hp-filter').value,
       playerCountFilter: document.getElementById('player-count-filter').value,
       hideImg: document.getElementById('hide-img-monsters').checked,
@@ -2294,7 +6649,7 @@
   function getMonsterWave(monsterName) {
     // Wave 1 monsters
     const wave1Monsters = [
-      'orc grunt', 'orc bonecrusher', 'hobogoblin spearman', 
+      'orc grunt', 'orc bonecrusher', 'hobgoblin spearman', 
       'goblin slinger', 'goblin skirmisher'
     ];
     
@@ -2302,7 +6657,7 @@
     const wave2Monsters = [
       'lizardman shadowclaw', 'troll brawler', 
       'lizardman flamecaster', 'troll ravager'
-    ];
+    ];                                                      
     
     if (wave1Monsters.some(monster => monsterName.includes(monster))) {
       return 1;
@@ -2315,7 +6670,6 @@
 
   function clearAllFilters() {
     document.getElementById('monster-name-filter').value = '';
-    document.getElementById('wave-filter').value = '';
     document.getElementById('hp-filter').value = '';
     document.getElementById('player-count-filter').value = '';
     document.getElementById('hide-img-monsters').checked = false;
@@ -2340,11 +6694,11 @@
     if (!document.getElementById('lootModal')) {
       var modal = document.createElement('div');
       modal.innerHTML = `<div id="lootModal" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.8); z-index:9999; align-items:center; justify-content:center;">
-      <div style="background:#2a2a3d; border-radius:12px; padding:20px; max-width:90%; width:400px; text-align:center; color:white; overflow-y:auto; max-height:80%;">
-          <h2 style="margin-bottom:15px;">🎁 Loot Gained</h2>
-          <div id="lootItems" style="display:flex; flex-wrap:wrap; justify-content:center; gap:10px;"></div>
+      <div style="background:#2a2a3d; border-radius:12px; padding:15px; max-width:80%; width:300px; text-align:center; color:white; overflow-y:auto; max-height:70%;">
+          <h2 style="margin-bottom:10px; font-size:18px;">🎁 Loot Gained</h2>
+          <div id="lootItems" style="display:flex; flex-wrap:wrap; justify-content:center; gap:8px;"></div>
           <br>
-          <button class="join-btn" onclick="document.getElementById('lootModal').style.display='none'" style="margin-top:10px;">Close</button>
+          <button class="join-btn" onclick="document.getElementById('lootModal').style.display='none'" style="margin-top:8px; padding:8px 16px; font-size:14px;">Close</button>
       </div>
   </div>`;
 
@@ -2366,15 +6720,18 @@
     document.querySelectorAll('.monster-card > a').forEach(x => {
       if (x.innerText.includes('Loot')) {
         var instaBtn = document.createElement('button');
+        const monsterId = x.href.split("id=")[1];
         instaBtn.onclick = function() {
-          lootWave(x.href.split("id=")[1]);
+          lootWave(monsterId);
         };
         instaBtn.className = "join-btn";
         instaBtn.innerText = "💰 Loot Instantly";
-        instaBtn.style.marginTop = "8px";
+        instaBtn.setAttribute('data-monster-id', monsterId); // Store monster ID for loot all
         x.parentNode.append(instaBtn);
       }
     });
+
+    // Loot All button is now added directly in applyLootPanelColors() when loot header is created
   }
 
   function joinWaveInstant(monsterId, originalLink) {
@@ -2430,6 +6787,202 @@
         }
     })
     .catch(() => showNotification("Server error", 'error'));
+  }
+
+  function addLootAllButtonToHeader(lootHeader, lootCount) {
+    // Check if Loot All button already exists
+    if (document.getElementById('loot-all-btn')) return;
+    
+    // Create the Loot All button
+    const lootAllBtn = document.createElement('button');
+    lootAllBtn.id = 'loot-all-btn';
+    lootAllBtn.className = 'join-btn';
+    lootAllBtn.innerText = `🎁 Loot  `;
+    lootAllBtn.style.cssText = `
+      background: linear-gradient(135deg, #4ecdc4 0%, #44a08d 100%);
+      color: white;
+      border: none;
+      padding: 2px 4px;
+      border-radius: 4px;
+      font-weight: bold;
+      cursor: pointer;
+      margin: 4px 0 4px 8px;
+      display: inline-block;
+      font-size: 11px;
+      box-shadow: 0 2px 4px rgba(78, 205, 196, 0.3);
+      transition: all 0.3s ease;
+      vertical-align: middle;
+    `;
+    
+    // Add hover effects
+    lootAllBtn.addEventListener('mouseenter', () => {
+      lootAllBtn.style.transform = 'translateY(-1px)';
+      lootAllBtn.style.boxShadow = '0 4px 12px rgba(78, 205, 196, 0.4)';
+    });
+    
+    lootAllBtn.addEventListener('mouseleave', () => {
+      lootAllBtn.style.transform = 'translateY(0)';
+      lootAllBtn.style.boxShadow = '0 3px 8px rgba(78, 205, 196, 0.3)';
+    });
+    
+    // Add click handler
+    lootAllBtn.addEventListener('click', lootAll);
+    
+    // Position the button right after the loot header
+    lootHeader.parentNode.insertBefore(lootAllBtn, lootHeader.nextSibling);
+  }
+
+  function addLootAllButton() {
+    // This function is now deprecated in favor of addLootAllButtonToHeader
+    // but kept for backward compatibility
+    console.log('addLootAllButton called - this should now be handled by addLootAllButtonToHeader');
+  }
+
+  async function lootAll() {
+    const lootAllBtn = document.getElementById('loot-all-btn');
+    if (!lootAllBtn) return;
+    
+    // Find all available loot buttons to get count
+    const lootButtons = document.querySelectorAll('.join-btn');
+    const availableLootButtons = Array.from(lootButtons).filter(btn => 
+      btn.innerText.includes('💰 Loot Instantly') && !btn.disabled
+    );
+    
+    if (availableLootButtons.length === 0) {
+      showNotification('No loot available to claim!', 'info');
+      return;
+    }
+    
+    // Show custom confirmation dialog with loot amount option
+    const lootAmount = prompt(`How many monsters do you want to loot?\n\nAvailable: ${availableLootButtons.length} monsters\n\nEnter a number (1-${availableLootButtons.length}) or leave empty for all:`, availableLootButtons.length.toString());
+    
+    if (lootAmount === null) {
+      return; // User cancelled
+    }
+    
+    let targetCount = availableLootButtons.length; // Default to all
+    
+    if (lootAmount.trim() !== '') {
+      const parsedAmount = parseInt(lootAmount);
+      if (isNaN(parsedAmount) || parsedAmount < 1) {
+        showNotification('Invalid amount! Please enter a number between 1 and ' + availableLootButtons.length, 'error');
+        return;
+      }
+      targetCount = Math.min(parsedAmount, availableLootButtons.length);
+    }
+    
+    // Final confirmation
+    const confirmed = confirm(`Are you sure you want to claim loot from ${targetCount} monsters?\n\nThis will claim loot from the first ${targetCount} available monsters.`);
+    if (!confirmed) {
+      return; // User cancelled
+    }
+    
+    // Disable button and show loading state
+    lootAllBtn.disabled = true;
+    lootAllBtn.innerText = '🎁 Looting...';
+    lootAllBtn.style.opacity = '0.7';
+    
+    // Extract monster IDs from data attributes (limit to targetCount)
+    const monsterIds = [];
+    availableLootButtons.slice(0, targetCount).forEach(btn => {
+      const monsterId = btn.getAttribute('data-monster-id');
+      if (monsterId) {
+        monsterIds.push(monsterId);
+      }
+    });
+    
+    if (monsterIds.length === 0) {
+      showNotification('No valid monster IDs found!', 'error');
+      lootAllBtn.disabled = false;
+      lootAllBtn.innerText = '🎁 Loot All (0)';
+      lootAllBtn.style.opacity = '1';
+      return;
+    }
+    
+    showNotification(`Claiming loot from ${monsterIds.length} monsters...`, 'info');
+    
+    try {
+      // Send multiple API requests in parallel for maximum speed
+      const promises = monsterIds.map(monsterId => 
+        fetch('loot.php', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+          body: 'monster_id=' + monsterId + '&user_id=' + userId
+        }).then(res => res.json())
+      );
+      
+      // Wait for all requests to complete
+      const results = await Promise.all(promises);
+      
+      // Collect all successful loot
+      let allLootItems = [];
+      let successCount = 0;
+      let errorCount = 0;
+      
+      results.forEach(data => {
+        if (data.status === 'success' && data.items) {
+          successCount++;
+          allLootItems = allLootItems.concat(data.items);
+        } else {
+          errorCount++;
+        }
+      });
+      
+      if (allLootItems.length > 0) {
+        // Group items by name and count quantities
+        const itemGroups = {};
+        allLootItems.forEach(item => {
+          if (itemGroups[item.NAME]) {
+            itemGroups[item.NAME].count++;
+          } else {
+            itemGroups[item.NAME] = {
+              ...item,
+              count: 1
+            };
+          }
+        });
+        
+        // Show all collected loot in the modal
+        const lootContainer = document.getElementById('lootItems');
+        if (lootContainer) {
+          lootContainer.innerHTML = '';
+          
+          Object.values(itemGroups).forEach(item => {
+            const div = document.createElement('div');
+            div.style = 'background:#1e1e2f; border-radius:8px; padding:10px; text-align:center; width:80px;';
+            div.innerHTML = `
+                <img src="${item.IMAGE_URL}" alt="${item.NAME}" style="width:64px; height:64px;"><br>
+                <small>${item.NAME}</small>
+                ${item.count > 1 ? `<br><small style="color: #4CAF50; font-weight: bold;">x${item.count}</small>` : ''}
+            `;
+            lootContainer.appendChild(div);
+          });
+          
+          // Show the loot modal
+          document.getElementById('lootModal').style.display = 'flex';
+        }
+        
+        showNotification(`Successfully claimed loot from ${successCount} monsters! Got ${allLootItems.length} items!`, 'success');
+        
+        // Remove the button after successful looting
+        setTimeout(() => {
+          lootAllBtn.remove();
+        }, 2000);
+        
+      } else {
+        showNotification('No loot was claimed!', 'error');
+        lootAllBtn.disabled = false;
+        lootAllBtn.innerText = '🎁 Loot All (0)';
+        lootAllBtn.style.opacity = '1';
+      }
+      
+    } catch (error) {
+      console.error('Error looting all monsters:', error);
+      showNotification('Server error. Please try again.', 'error');
+      lootAllBtn.disabled = false;
+      lootAllBtn.innerText = '🎁 Loot All (0)';
+      lootAllBtn.style.opacity = '1';
+    }
   }
 
   function showNotification(msg, type = 'success') {
@@ -2526,17 +7079,56 @@
         joinBtn.className = "join-btn";
         joinBtn.style.cssText = 'flex: 1; font-size: 12px;';
         joinBtn.innerText = "⚔️ Join Battle";
-        joinBtn.onclick = function() {
+        joinBtn.addEventListener('click', function(e) {
+          if (e.ctrlKey || e.metaKey) {
+            // Ctrl+Click or Cmd+Click - join battle first, then open new tab
+            e.preventDefault();
+
+            
+            // Join the battle first
+            fetch('user_join_battle.php', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/x-www-form-urlencoded'
+              },
+              body: 'monster_id=' + monsterId + '&user_id=' + userId,
+              referrer: 'https://demonicscans.org/battle.php?id=' + monsterId
+            })
+            .then(res => res.text())
+            .then(data => {
+              const msg = (data || '').trim();
+              const ok = msg.toLowerCase().startsWith('you have successfully');
+              
+              if (ok) {
+                // Battle joined successfully, now open new tab
+                window.open(battleLink.href, '_blank');
+                showNotification('Battle joined! Opening in new tab...', 'success');
+              } else {
+                showNotification(msg || 'Failed to join battle', 'error');
+              }
+            })
+            .catch(() => {
+              showNotification('Server error. Please try again.', 'error');
+            });
+          } else {
+            // Normal click - use instant join
           joinWaveInstant(monsterId, battleLink);
-        };
+          }
+        });
 
         const viewBtn = document.createElement('button');
         viewBtn.className = "join-btn";
         viewBtn.style.cssText = 'flex: 1; font-size: 12px; background: #6c7086;';
         viewBtn.innerText = "👁️ View";
-        viewBtn.onclick = function() {
+        viewBtn.addEventListener('click', function(e) {
+          if (e.ctrlKey || e.metaKey) {
+            // Ctrl+Click or Cmd+Click - open in new tab
+            window.open(battleLink.href, '_blank');
+          } else {
+            // Normal click - navigate in same tab
           window.location.href = battleLink.href;
-        };
+          }
+        });
 
         buttonContainer.appendChild(joinBtn);
         buttonContainer.appendChild(viewBtn);
@@ -2560,7 +7152,7 @@
         <button class="section-toggle-btn" id="continue-battle-toggle">${extensionSettings.continueBattlesExpanded ? '–' : '+'}</button>
       </div>
       <div class="monster-section-content" id="continue-battle-content" style="display: ${extensionSettings.continueBattlesExpanded ? 'block' : 'none'};">
-        <div class="monster-container" style="display: flex; flex-wrap: wrap; gap: 15px; margin-bottom: 20px;"></div>
+        <div class="monster-container" style="display: flex; flex-wrap: wrap; gap: 15px; margin-bottom: 18px;"></div>
       </div>
     `;
 
@@ -2626,6 +7218,9 @@
       // Update the loot section header with count
       const lootHeader = lootSection.querySelector('h3');
       lootHeader.textContent = `💰 Available Loot (${lootCards.length})`;
+      
+      // Add Loot All button right after the header
+      addLootAllButtonToHeader(lootHeader, lootCards.length);
       
       const lootGrid = lootSection.querySelector('.monster-container');
       lootCards.forEach(card => lootGrid.appendChild(card));
@@ -2743,73 +7338,252 @@
       subtree: true
     };
 
-    const targetElement = document.querySelector('.leaderboard-panel');
+    const targetElement = document.querySelector('.attack-panel');
     if (targetElement) {
       observer.observe(targetElement, config);
     }
   }
 
-  function colorMyself(){
-    document.querySelectorAll('.lb-row a').forEach(x => {
-      if (x.href.includes(userId)) {
-        var lbrow = x.parentElement.parentElement;
-        var exDamageDone = lbrow.querySelector('.lb-dmg').innerText;
-        var exDamageNumber = Number.parseInt(exDamageDone.replaceAll(',','').replaceAll('.',''));
-
-        lbrow.style.backgroundColor = '#7a2020';
-
+    function highlightLootCards() {
+      // Prioritize the updated "Your Damage" section first (most reliable when updated)
+      var exDamageNumber = 0;
+      var exDamageDone = "0";
+      
+      // Try to get from "Your Damage" section first
+      const yourDamageElement = document.querySelector('#yourDamageValue');
+      if (yourDamageElement) {
+        exDamageDone = yourDamageElement.innerText;
+        exDamageNumber = Number.parseInt(exDamageDone.replaceAll(',','').replaceAll('.',''));
+      } else {
+        // Fallback: try to get from stats-stack
         document.querySelectorAll("div.stats-stack > span").forEach(x => {
           if (x.innerText.includes('Your Damage: ')) {
-            x.innerText = "Your Damage: " + exDamageDone;
+            const damageMatch = x.innerText.match(/Your Damage: ([\d,]+)/);
+            if (damageMatch) {
+              exDamageDone = damageMatch[1];
+              exDamageNumber = Number.parseInt(exDamageDone.replaceAll(',','').replaceAll('.',''));
+            }
           }
         });
+      }
 
-        var lootContainer = document.createElement('div');
-        lootContainer.id = 'extension-loot-container';
-        lootContainer.style.display = 'ruby';
-        lootContainer.style.maxWidth = '50%';
-
-        document.querySelectorAll('.loot-card').forEach(x => lootContainer.append(x));
-
-        var enemyAndLootContainer = document.createElement('div');
-        enemyAndLootContainer.id = 'extension-enemy-loot-container';
-        enemyAndLootContainer.style.display = 'inline-flex';
-
-        const monsterImage = document.querySelector('.monster_image');
-        if (monsterImage) {
-          enemyAndLootContainer.append(monsterImage);
-        }
-        enemyAndLootContainer.append(lootContainer);
-
-        const panel = document.querySelector("body > div.main-wrapper > div > .panel");
-        if (panel) {
-          panel.prepend(enemyAndLootContainer);
-        }
-
-        document.querySelectorAll('.loot-card').forEach(y => {
-          y.style.margin = '5px';
-          y.querySelectorAll('.loot-stats .chip').forEach(x => {
-            if (x.parentElement) {
-              x.parentElement.style.gap = '0px';
+      // Highlight loot cards based on damage requirements
+      document.querySelectorAll('.loot-card').forEach(y => {
+        y.style.margin = '5px';
+        y.querySelectorAll('.loot-stats .chip').forEach(x => {
+          if (x.parentElement) {
+            x.parentElement.style.gap = '0px';
+          }
+          if (x.innerText.includes('DMG req')) {
+            var lootReqNumber = Number.parseInt(x.innerText.substr(9).replaceAll(',','').replaceAll('.',''));
+            if (lootReqNumber <= exDamageNumber) {
+              y.style.background = extensionSettings.lootHighlighting.backgroundColor;
+              y.style.boxShadow = `0 0 15px ${extensionSettings.lootHighlighting.glowColor}`;
+              try {
+                y.classList.remove('locked');
+                const lockBadge = y.querySelector('.lock-badge');
+                if (lockBadge) {
+                  lockBadge.remove();
+                }
+              } catch {}
             }
-            if (x.innerText.includes('DMG req')) {
-              var lootReqNumber = Number.parseInt(x.innerText.substr(9).replaceAll(',','').replaceAll('.',''));
-              if (lootReqNumber <= exDamageNumber) {
-                y.style.background = 'rgb(0 255 30 / 20%)';
-                y.style.boxShadow = '0 0 15px rgba(255, 215, 0, 0.6)';
-                try {
-                  y.classList.remove('locked');
-                  const lockBadge = y.querySelector('.lock-badge');
-                  if (lockBadge) {
-                    lockBadge.remove();
-                  }
-                } catch {}
-              }
-            }
-          });
+          }
+        });
+      });
+    }
+
+    function initUniversalLootHighlighting() {
+      // Initial highlighting
+      highlightLootCards();
+      
+      // Set up observer to watch for new loot cards
+      const observer = new MutationObserver((mutations) => {
+        const shouldUpdate = mutations.some(mutation =>
+          mutation.type === 'childList' && 
+          mutation.addedNodes.length > 0 &&
+          Array.from(mutation.addedNodes).some(node => 
+            node.nodeType === Node.ELEMENT_NODE && 
+            (node.classList?.contains('loot-card') || node.querySelector?.('.loot-card'))
+          )
+        );
+
+        if (shouldUpdate) {
+          setTimeout(highlightLootCards, 100);
+        }
+      });
+
+      // Start observing
+      observer.observe(document.body, {
+        childList: true,
+        subtree: true
+      });
+      
+      // Monitor slash button clicks
+      setupSlashButtonMonitoring();
+  }
+  
+  function setupSlashButtonMonitoring() {
+    // Find all buttons that contain "slash" text (case insensitive)
+    const slashButtons = document.querySelectorAll('button, input[type="button"], input[type="submit"]');
+    
+    slashButtons.forEach(button => {
+      const buttonText = button.textContent || button.value || '';
+      if (buttonText.toLowerCase().includes('slash')) {
+        // Add click listener to slash buttons
+        button.addEventListener('click', function(event) {
+          // Wait a bit for the damage to update, then check loot highlighting
+          setTimeout(() => {
+            highlightLootCards();
+          }, 750); // Wait 750ms for damage to update
         });
       }
     });
+  }
+
+  function colorMyself(){
+    // Don't interfere with the website's natural damage updating
+    // Just let the website update #yourDamageValue automatically
+
+        // Only create containers if they don't already exist
+        if (!document.getElementById('extension-enemy-loot-container')) {
+          var lootContainer = document.createElement('div');
+          lootContainer.id = 'extension-loot-container';
+          lootContainer.style.display = 'ruby';
+          lootContainer.style.maxWidth = '50%';
+
+          document.querySelectorAll('.loot-card').forEach(x => lootContainer.append(x));
+
+          var enemyAndLootContainer = document.createElement('div');
+          enemyAndLootContainer.id = 'extension-enemy-loot-container';
+          enemyAndLootContainer.style.display = 'inline-flex';
+
+        // Create monster display container
+        var monsterDisplay = document.createElement('div');
+        monsterDisplay.id = 'monster-display';
+        monsterDisplay.style.display = 'flex';
+        monsterDisplay.style.flexDirection = 'column';
+        monsterDisplay.style.alignItems = 'center';
+        monsterDisplay.style.gap = '10px';
+        monsterDisplay.style.flexBasis = '350px';
+        monsterDisplay.style.minWidth = '250px';
+
+        const monsterImage = document.querySelector('#monsterImage');
+        if (monsterImage) {
+          // Restore original image size
+          monsterImage.style.maxHeight = '400px';
+          
+          // Check if wrapper already exists
+          let imageWrapper = document.querySelector('.monster-image-wrapper');
+          if (!imageWrapper) {
+            // Create a wrapper for the monster image to handle grayscale properly
+            imageWrapper = document.createElement('div');
+            imageWrapper.className = 'monster-image-wrapper';
+            imageWrapper.style.position = 'relative';
+            imageWrapper.style.display = 'inline-block';
+            
+            // Move the image into the wrapper
+            imageWrapper.appendChild(monsterImage);
+          }
+          monsterDisplay.append(imageWrapper);
+        }
+
+        // Find and move ALL monster-related content into monster display
+        const panel = document.querySelector("body > div.main-wrapper > div > .panel");
+        if (panel) {
+          // Find specific elements that should be in monster display (be more specific)
+          const elementsToMove = [];
+          
+          // Add specific elements one by one
+          const monsterName = panel.querySelector('h1, h2, h3, strong');
+          if (monsterName) elementsToMove.push(monsterName);
+          
+          const hpBar = panel.querySelector('.hp-bar');
+          if (hpBar) elementsToMove.push(hpBar);
+          
+          const hpText = panel.querySelector('.hp-text');
+          if (hpText) elementsToMove.push(hpText);
+          
+          const statsStack = panel.querySelector('.stats-stack');
+          if (statsStack) elementsToMove.push(statsStack);
+          
+          const yourStats = panel.querySelector('#yourStats');
+          if (yourStats) elementsToMove.push(yourStats);
+          
+          const lootButton = panel.querySelector('#loot-button');
+          if (lootButton) elementsToMove.push(lootButton);
+          
+          // Find "Monster has been slain!" text
+          const slainText = Array.from(panel.querySelectorAll('*')).find(el =>
+            el.textContent && el.textContent.includes('Monster has been slain!')
+          );
+          if (slainText) elementsToMove.push(slainText);
+          
+          // Add attack buttons to monster display (but not the text)
+          const attackButtons = panel.querySelector('.attack-btn-wrap');
+          if (attackButtons) elementsToMove.push(attackButtons);
+          
+          // Remove the "Choose a Skill to Attack" text completely
+          const attackText = Array.from(panel.querySelectorAll('*')).find(el =>
+            el.textContent && el.textContent.includes('💥 Choose a Skill to Attack')
+          );
+          if (attackText) {
+            attackText.remove();
+          }
+          
+          // Use the elements directly without additional filtering
+          const filteredElements = elementsToMove;
+          
+          // Create a container for monster stats
+          const monsterStatsContainer = document.createElement('div');
+          
+          // Move all elements to monster stats container
+          filteredElements.forEach(element => {
+            monsterStatsContainer.append(element);
+          });
+          
+          // Remove zombie emoji completely (including br tags)
+          const zombieEmoji = Array.from(panel.querySelectorAll('*')).find(el => 
+            el.textContent && el.textContent.includes('🧟')
+          );
+          if (zombieEmoji) {
+            zombieEmoji.remove();
+          }
+          
+          // Also remove any br elements that contain only the zombie emoji
+          const brElements = panel.querySelectorAll('br');
+          brElements.forEach(br => {
+            if (br.textContent && br.textContent.trim() === '🧟') {
+              br.remove();
+            }
+          });
+          
+          // Remove any text nodes containing zombie emoji
+          const walker = document.createTreeWalker(
+            panel,
+            NodeFilter.SHOW_TEXT,
+            null,
+            false
+          );
+          let textNode;
+          while (textNode = walker.nextNode()) {
+            if (textNode.textContent && textNode.textContent.includes('🧟')) {
+              textNode.remove();
+            }
+          }
+          
+          monsterDisplay.append(monsterStatsContainer);
+        }
+
+        enemyAndLootContainer.append(monsterDisplay);
+        enemyAndLootContainer.append(lootContainer);
+
+          if (panel) {
+            panel.prepend(enemyAndLootContainer);
+          }
+        }
+
+      // Call the universal loot highlighting function
+      highlightLootCards();
   }
 
   function initAnyClickClosesModal(){
@@ -2977,10 +7751,120 @@
     initContinueBattleFirst()
     initImprovedWaveButtons()
     initMonsterSorting()
+    initWaveAutoRefresh()
+  }
+
+  function initPvPHistoryCollapse() {
+    // Find the battle history card that contains the muted text about finished matches
+    const historyCard = Array.from(document.querySelectorAll('.card')).find(card => 
+      card.textContent.includes('Your last 20 finished matches')
+    );
+    if (!historyCard) return;
+
+    // Get or create a container for the header
+    let headerContainer = historyCard.querySelector('.history-header');
+    if (!headerContainer) {
+      headerContainer = document.createElement('div');
+      headerContainer.className = 'history-header';
+      headerContainer.style.cssText = `
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 8px;
+        margin-bottom: 8px;
+        border-radius: 4px;
+        background: #1c2230;
+      `;
+      
+      // Move the existing muted text into our header
+      const mutedText = historyCard.querySelector('.muted');
+      if (mutedText) {
+        mutedText.style.margin = '0';
+        headerContainer.appendChild(mutedText);
+      }
+      
+      // Insert the header at the top of the card
+      historyCard.insertBefore(headerContainer, historyCard.firstChild);
+    }
+
+    // Create collapse button with improved styling
+    const collapseBtn = document.createElement('button');
+    collapseBtn.innerHTML = '▼';
+    collapseBtn.style.cssText = `
+      background: #2a354b;
+      border: 1px solid #45475a;
+      color: #cdd6f4;
+      font-size: 14px;
+      cursor: pointer;
+      padding: 4px 12px;
+      border-radius: 4px;
+      transition: all 0.3s;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      min-width: 30px;
+    `;
+
+    // Add button to header
+    headerContainer.appendChild(collapseBtn);
+
+    // Get the table to collapse
+    const table = historyCard.querySelector('.table');
+    if (!table) return;
+
+    // Create a wrapper for the table to handle collapse animation
+    const tableWrapper = document.createElement('div');
+    tableWrapper.style.cssText = `
+      transition: max-height 0.3s ease-out;
+      overflow: hidden;
+    `;
+    table.parentNode.insertBefore(tableWrapper, table);
+    tableWrapper.appendChild(table);
+    tableWrapper.style.maxHeight = table.scrollHeight + 'px';
+
+    // Store collapse state in extension settings
+    if (typeof extensionSettings.pvpHistoryCollapsed === 'undefined') {
+      extensionSettings.pvpHistoryCollapsed = false;
+      saveSettings();
+    }
+
+    // Apply initial state
+    if (extensionSettings.pvpHistoryCollapsed) {
+      tableWrapper.style.maxHeight = '0';
+      collapseBtn.style.transform = 'rotate(-90deg)';
+    }
+
+    // Add click handler
+    collapseBtn.addEventListener('click', () => {
+      const isCollapsed = tableWrapper.style.maxHeight === '0px';
+      tableWrapper.style.maxHeight = isCollapsed ? table.scrollHeight + 'px' : '0';
+      collapseBtn.style.transform = isCollapsed ? '' : 'rotate(-90deg)';
+      collapseBtn.style.backgroundColor = isCollapsed ? '#2a354b' : '#45475a';
+      extensionSettings.pvpHistoryCollapsed = !isCollapsed;
+      saveSettings();
+    });
   }
 
   function initPvPMods(){
-    initPvPBannerFix()
+    initPvPBannerFix();
+    // Always create prediction box
+    createPredictionBox();
+    // Then init auto-surrender if enabled
+    if (extensionSettings.pvpAutoSurrender.enabled) {
+      initPvPAutoSurrender();
+    }
+    // Add battle highlighting
+    highlightPvpBattles();
+    // Make history collapsible
+    initPvPHistoryCollapse();
+    // Observe table for changes
+    const table = document.querySelector('.table');
+    if (table) {
+      const observer = new MutationObserver(() => {
+        highlightPvpBattles();
+      });
+      observer.observe(table, { childList: true, subtree: true });
+    }
   }
 
   function initPvPBattleMods(){
@@ -2991,10 +7875,83 @@
     console.log("Initializing dashboard tools");
   }
 
+  function initBattleLayoutSideBySide() {
+    // First, forcefully convert any loot panels to loot-panel class
+    var lootPanels = document.querySelectorAll('.panel');
+    lootPanels.forEach(function(panel) {
+      var strongElement = panel.querySelector('strong');
+      if (strongElement && strongElement.textContent.includes('🎁 Possible Loot')) {
+        panel.className = 'panel loot-panel';
+        console.log('Converted loot panel to loot-panel class');
+      }
+    });
+    
+    // Get the leaderboard and log panels
+    var leaderboardPanel = document.querySelector('.panel.leaderboard-panel');
+    var logPanel = document.querySelector('.panel.log-panel');
+    
+    // If panels don't exist, exit
+    if (!leaderboardPanel || !logPanel) {
+      console.log('Leaderboard or log panel not found');
+      return;
+    }
+    
+    // Get the parent element that contains both panels
+    var parentElement = leaderboardPanel.parentElement;
+    
+    // Remove any loot panels from the parent
+    var lootPanel = document.querySelector('.loot-panel');
+    if (lootPanel) {
+      parentElement.removeChild(lootPanel);
+      console.log('Removed loot panel from parent');
+    }
+    
+    // Create container for side-by-side layout
+    var container = document.createElement('div');
+    container.style.cssText = `display: flex; gap: 20px; align-items: flex-start;`;
+    
+    // Style adjustments for better side-by-side display
+    leaderboardPanel.style.cssText += `flex: 1; min-width: 400px;`;
+    logPanel.style.cssText += `flex: 1; min-width: 400px; max-height: 500px; overflow-y: auto;`;
+    
+    // Remove both panels from their current parent
+    parentElement.removeChild(leaderboardPanel);
+    parentElement.removeChild(logPanel);
+    
+    // Add both panels to the new container
+    container.appendChild(leaderboardPanel);
+    container.appendChild(logPanel);
+    
+    // Insert the container into the parent element
+    parentElement.appendChild(container);
+  }
+
   function initBattleMods(){
     initReducedImageSize()
     initTotalOwnDamage()
     initAnyClickClosesModal()
+    addBattleHideImagesToggle()
+    initBattleLayoutSideBySide()
+    
+    // Apply initial monster backgrounds
+    applyMonsterBackgrounds()
+    applyLootPanelColors()
+    
+    // Set up observer for panel changes
+    const observer = new MutationObserver(() => {
+      applyMonsterBackgrounds();
+      applyLootPanelColors();
+    });
+    
+    // Observe the container that holds panels
+    const container = document.querySelector('.container, #content');
+    if (container) {
+      observer.observe(container, { 
+        childList: true, 
+        subtree: true,
+        characterData: true
+      });
+    }
   }
 
   function initChatMods(){
@@ -3008,16 +7965,260 @@
     initAlternativeInventoryView()
     initItemTotalDmg()
     addInventoryQuickAccessButtons()
+    createBackToDashboardButton()
+    removeOriginalBackButton()
+      applyCustomBackgrounds()
   }
 
   function initMerchantMods() {
     addMerchantQuickAccessButtons()
+      applyCustomBackgrounds()
+  }
+
+
+
+  function getInventoryItemQuantity(itemName) {
+    // First try to find on current page (if on inventory page)
+    if (window.location.pathname.includes('inventory.php')) {
+      const allSections = document.querySelectorAll('.section');
+      
+      for (const section of allSections) {
+        const slotBoxes = section.querySelectorAll('.slot-box');
+        
+        for (const slot of slotBoxes) {
+          const img = slot.querySelector('img');
+          const label = slot.querySelector('.label');
+          
+          if (img && label) {
+            const currentItemName = img.getAttribute('alt');
+            
+            if (currentItemName === itemName) {
+              // Look for quantity in the label (usually shows as "x123")
+              const labelText = label.textContent;
+              const quantityMatch = labelText.match(/x(\d+)/);
+              
+              if (quantityMatch) {
+                return parseInt(quantityMatch[1]);
+              }
+              
+              // If no quantity found, it might be equipped (quantity 1)
+              return 1;
+            }
+          }
+        }
+      }
+    }
+    
+    // If not on inventory page, try to get from pinned items in sidebar
+    const pinnedItem = extensionSettings.pinnedInventoryItems.find(item => item.name === itemName);
+    if (pinnedItem) {
+      return pinnedItem.quantity || 0;
+    }
+    
+    // If still not found, return 0 (item doesn't exist)
+    return 0;
+  }
+
+  function initPetNaming() {
+    if (!extensionSettings.petNames.enabled) return;
+    
+    // Ensure petNames object exists
+    if (!extensionSettings.petNames.names) {
+      extensionSettings.petNames.names = {};
+    }
+    
+    // Add custom names to all pet slots
+    document.querySelectorAll('.slot-box[data-pet-inv-id]').forEach(slot => {
+      const petId = slot.getAttribute('data-pet-inv-id');
+      const petImg = slot.querySelector('img[alt]');
+      if (!petImg) return;
+      
+      const originalName = petImg.getAttribute('alt');
+      const customName = extensionSettings.petNames.names[petId];
+      
+      // Handle both equipped pets (.item-container) and inventory pets (direct img)
+      const itemContainer = slot.querySelector('.item-container');
+      
+      // Create custom name element
+      const nameElement = document.createElement('div');
+      nameElement.className = 'pet-custom-name';
+      nameElement.setAttribute('data-pet-id', petId);
+      nameElement.setAttribute('data-original-name', originalName);
+      
+      if (customName) {
+        nameElement.textContent = customName;
+      } else {
+        nameElement.textContent = 'Click to name';
+        nameElement.style.fontStyle = 'italic';
+        nameElement.style.opacity = '0.7';
+      }
+      
+      // Insert the name element based on structure
+      if (itemContainer) {
+        // Equipped pets: insert into .item-container
+        itemContainer.appendChild(nameElement);
+      } else {
+        // Inventory pets: insert after the img tag
+        petImg.insertAdjacentElement('afterend', nameElement);
+      }
+      
+      // Add click event for editing
+      nameElement.addEventListener('click', (e) => {
+        if (e.target.classList.contains('pet-name-edit-btn')) return;
+        startEditingPetName(nameElement, petId);
+      });
+    });
+  }
+  
+  function startEditingPetName(nameElement, petId) {
+    const currentName = extensionSettings.petNames.names[petId] || '';
+    
+    // Create input field
+    const input = document.createElement('input');
+    input.type = 'text';
+    input.className = 'pet-name-input';
+    input.value = currentName;
+    input.placeholder = 'Enter pet name...';
+    input.maxLength = 20;
+    
+    // Create action buttons
+    const actionsDiv = document.createElement('div');
+    actionsDiv.className = 'pet-name-actions';
+    
+    const saveBtn = document.createElement('button');
+    saveBtn.className = 'pet-name-btn pet-name-save';
+    saveBtn.textContent = 'Save';
+    
+    const cancelBtn = document.createElement('button');
+    cancelBtn.className = 'pet-name-btn pet-name-cancel';
+    cancelBtn.textContent = 'Cancel';
+    
+    actionsDiv.appendChild(saveBtn);
+    actionsDiv.appendChild(cancelBtn);
+    
+    // Replace content with input and buttons
+    nameElement.innerHTML = '';
+    nameElement.appendChild(input);
+    nameElement.appendChild(actionsDiv);
+    nameElement.classList.add('editing');
+    
+    // Focus and select text
+    input.focus();
+    input.select();
+    
+    // Event handlers
+    const saveName = () => {
+      const newName = input.value.trim();
+      if (newName) {
+        extensionSettings.petNames.names[petId] = newName;
+        nameElement.textContent = newName;
+        nameElement.style.fontStyle = 'normal';
+        nameElement.style.opacity = '1';
+      } else {
+        delete extensionSettings.petNames.names[petId];
+        nameElement.textContent = 'Click to name';
+        nameElement.style.fontStyle = 'italic';
+        nameElement.style.opacity = '0.7';
+      }
+      nameElement.classList.remove('editing');
+      saveSettings();
+    };
+    
+    const cancelEdit = () => {
+      const currentName = extensionSettings.petNames.names[petId] || '';
+      if (currentName) {
+        nameElement.textContent = currentName;
+        nameElement.style.fontStyle = 'normal';
+        nameElement.style.opacity = '1';
+      } else {
+        nameElement.textContent = 'Click to name';
+        nameElement.style.fontStyle = 'italic';
+        nameElement.style.opacity = '0.7';
+      }
+      nameElement.classList.remove('editing');
+    };
+    
+    saveBtn.addEventListener('click', saveName);
+    cancelBtn.addEventListener('click', cancelEdit);
+    
+    input.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        saveName();
+      } else if (e.key === 'Escape') {
+        e.preventDefault();
+        cancelEdit();
+      }
+    });
+    
+    // Click outside to cancel
+    const clickOutside = (e) => {
+      if (!nameElement.contains(e.target)) {
+        cancelEdit();
+        document.removeEventListener('click', clickOutside);
+      }
+    };
+    setTimeout(() => document.addEventListener('click', clickOutside), 100);
   }
 
   function initPetMods(){
     initPetTotalDmg()
     initPetRequiredFood()
-    showComingSoon('Pets')
+    initPetNaming()
+    
+    // Remove the back to dashboard button
+    const backToDashboardBtn = document.querySelector('a[href="game_dash.php"].btn');
+    if (backToDashboardBtn) {
+        backToDashboardBtn.remove();
+    }
+    
+    // Remove empty div with margin: 20px
+    const emptyMarginDiv = document.querySelector('div[style*="margin: 20px"]');
+    if (emptyMarginDiv && emptyMarginDiv.innerHTML.trim() === '') {
+        emptyMarginDiv.remove();
+    }
+    
+    // Move team selection buttons to content area
+    const teamSelectionDiv = document.querySelector('div[style*="margin: 12px auto 0"][style*="max-width:1000px"]');
+    if (teamSelectionDiv) {
+        // Find the content area container
+        const contentArea = document.querySelector('.content-area .container');
+        if (contentArea) {
+            // Find the h1 title
+            const title = contentArea.querySelector('h1');
+            if (title) {
+                // Create team selection container
+                const teamContainer = document.createElement('div');
+                teamContainer.style.cssText = 'margin: 20px 0; display: flex; gap: 8px; justify-content: center;';
+                
+                // Clone and modify the team buttons
+                const attackBtn = teamSelectionDiv.querySelector('a[href="?team=atk"]');
+                const defenseBtn = teamSelectionDiv.querySelector('a[href="?team=def"]');
+                
+                if (attackBtn) {
+                    const newAttackBtn = attackBtn.cloneNode(true);
+                    newAttackBtn.style.cssText = 'background:#2a4b8d; text-decoration:none; padding: 8px 12px; border-radius: 4px; text-align: center; color: white; font-size: 12px;';
+                    teamContainer.appendChild(newAttackBtn);
+                }
+                
+                if (defenseBtn) {
+                    const newDefenseBtn = defenseBtn.cloneNode(true);
+                    newDefenseBtn.style.cssText = 'background:#2b2b2b; text-decoration:none; padding: 8px 12px; border-radius: 4px; text-align: center; color: white; font-size: 12px;';
+                    teamContainer.appendChild(newDefenseBtn);
+                }
+                
+                // Insert after the title
+                title.insertAdjacentElement('afterend', teamContainer);
+            }
+        }
+        
+        // Remove original team selection div
+        teamSelectionDiv.remove();
+    }
+    
+    
+    createBackToDashboardButton()
+      applyCustomBackgrounds()
   }
 
   function initStatMods(){
@@ -3027,6 +8228,12 @@
 
   function initBlacksmithMods(){
     showComingSoon('Blacksmith')
+      applyCustomBackgrounds()
+  }
+
+  // Simple placeholder function to prevent errors
+  function showComingSoon(feature) {
+    console.log(`${feature} feature coming soon!`);
   }
 
   function initEventMods(){
@@ -3038,7 +8245,6 @@
   var autoSlashEnabled = false;
 
   function initAutoSlash() {
-    console.log('Initializing auto-slash for PvP battles');
     
     // Create auto-slash toggle button
     const attackContainer = document.querySelector('.attack-btn-wrap');
@@ -3061,7 +8267,7 @@
       autoSlashBtn.addEventListener('click', toggleAutoSlash);
       attackContainer.appendChild(autoSlashBtn);
       
-      console.log('Auto-slash button added to PvP battle page');
+
     }
   }
 
@@ -3081,21 +8287,18 @@
       autoSlashEnabled = false;
       btn.innerHTML = '🤖 Auto Slash';
       btn.style.background = '#ff6b6b';
-      console.log('Auto-slash stopped');
     } else {
       // Start auto-slash
       autoSlashEnabled = true;
       btn.innerHTML = '⏹️ Stop Auto';
       btn.style.background = '#4ecdc4';
-      console.log('Auto-slash started');
       
       // Start the interval
       autoSlashInterval = setInterval(() => {
         if (autoSlashEnabled && slashBtn && !slashBtn.disabled) {
-          console.log('Auto-clicking slash button');
           slashBtn.click();
         }
-      }, 1000); // 1 second cooldown
+      }, 1070);
     }
   }
 
@@ -3298,8 +8501,9 @@
           content += '<div class="quick-access-empty">No pinned items. Visit inventory to pin items.</div>';
     } else {
           extensionSettings.pinnedInventoryItems.forEach(item => {
-              // Always show quantity for consumables, even if it's 1
-              const displayQuantity = item.type === 'consumable' ? ` (x${item.quantity || 1})` : '';
+              // Always fetch fresh quantity from current inventory
+              const currentQuantity = getInventoryItemQuantity(item.name);
+              const displayQuantity = item.type === 'consumable' ? ` (x${currentQuantity || 0})` : '';
               const itemKey = item.type === 'consumable' ? item.name : item.id;
         
         content += `
@@ -3308,16 +8512,16 @@
                           <img src="${item.image}" alt="${item.name}" style="width: 24px; height: 24px; border-radius: 4px;" onerror="this.style.display='none'">
               <div class="qa-item-info">
                               <div class="qa-item-name">${item.name}</div>
-                              <div class="qa-item-stats">Available: ${item.quantity}</div>
+                              <div class="qa-item-stats">Available: ${currentQuantity}</div>
               </div>
                           <button class="qa-remove-btn" data-action="remove">×</button>
             </div>
             <div class="qa-item-actions">
-                          ${item.type === 'consumable' && item.quantity > 0 ? 
+                          ${item.type === 'consumable' && currentQuantity > 0 ? 
                             `<div class="qa-use-controls" style="display: flex; align-items: center; gap: 5px;">
                               <div class="qty-wrap" style="display: flex; align-items: center; border: 1px solid #45475a; border-radius: 4px; background: #1e1e2e;">
                                 <button type="button" class="qty-btn minus" style="background: #f38ba8; color: white; border: none; padding: 2px 6px; cursor: pointer; border-radius: 3px 0 0 3px;">−</button>
-                                <input type="number" class="qty-input" min="1" max="${item.quantity}" step="1" value="1" style="width: 30px; padding: 2px; background: #1e1e2e; color: #cdd6f4; border: none; text-align: center; font-size: 10px;">
+                                <input type="number" class="qty-input" min="1" max="${currentQuantity}" step="1" value="1" style="width: 30px; padding: 2px; background: #1e1e2e; color: #cdd6f4; border: none; text-align: center; font-size: 10px;">
                                 <button type="button" class="qty-btn plus" style="background: #a6e3a1; color: #1e1e2e; border: none; padding: 2px 6px; cursor: pointer; border-radius: 0 3px 3px 0;">+</button>
                               </div>
                               <button class="qa-use-btn" data-action="use" style="background: #74c0fc; color: #1e1e2e; border: none; padding: 4px 8px; border-radius: 4px; cursor: pointer; font-size: 10px; font-weight: bold;">Use</button>
@@ -3458,9 +8662,15 @@
           if (typeof useItem === 'function') {
             useItem(itemId, 30, itemName, quantity); // Assuming item type 30 for stamina potions
             showNotification(`✅ Used ${quantity}x ${itemName}`, 'success');
+            
+            // Update sidebar quantity after successful use
+            updateSidebarItemQuantity(item, quantity);
           } else {
             // Use direct API call when native function isn't available
             useItemDirectly(itemId, itemName, quantity);
+            
+            // Update sidebar quantity after successful use
+            updateSidebarItemQuantity(item, quantity);
           }
         }
       });
@@ -3477,12 +8687,19 @@
         const itemType = item?.dataset.itemType;
         if (itemId && itemName && itemType) {
           // Use the website's native useItem function with default quantity
+          const multipleQuantity = extensionSettings.multiplePotsCount || 3;
           if (typeof useItem === 'function') {
-            useItem(itemId, 30, itemName, extensionSettings.multiplePotsCount || 3);
-            showNotification(`✅ Used ${extensionSettings.multiplePotsCount || 3}x ${itemName}`, 'success');
+            useItem(itemId, 30, itemName, multipleQuantity);
+            showNotification(`✅ Used ${multipleQuantity}x ${itemName}`, 'success');
+            
+            // Update sidebar quantity after successful use
+            updateSidebarItemQuantity(item, multipleQuantity);
           } else {
             // Use direct API call when native function isn't available
-            useItemDirectly(itemId, itemName, extensionSettings.multiplePotsCount || 3);
+            useItemDirectly(itemId, itemName, multipleQuantity);
+            
+            // Update sidebar quantity after successful use
+            updateSidebarItemQuantity(item, multipleQuantity);
           }
         }
       });
@@ -4135,6 +9352,38 @@
   window.autoClickShowMore = autoClickShowMore;
   window.getAllConsumableItems = getAllConsumableItems;
   window.findItemByName = findItemByName;
+
+  // Script to remove specific <br> elements and attack text
+  function cleanUpInterface() {
+      // Remove "💥 Choose a Skill to Attack:" text and the <br> that follows it
+      const walker = document.createTreeWalker(
+          document.body,
+          NodeFilter.SHOW_TEXT
+      );
+      
+      let node;
+      while (node = walker.nextNode()) {
+          if (node.nodeValue.includes('💥 Choose a Skill to Attack:')) {
+              // Remove the text
+              node.nodeValue = node.nodeValue.replace('💥 Choose a Skill to Attack:', '').trim();
+              console.log('Removed attack text');
+              
+              // Find and remove the <br> element that follows this text
+              let nextElement = node.nextSibling;
+              while (nextElement) {
+                  if (nextElement.nodeType === Node.ELEMENT_NODE && nextElement.tagName === 'BR') {
+                      nextElement.remove();
+                      console.log('Removed BR element after attack text');
+                      break;
+                  }
+                  nextElement = nextElement.nextSibling;
+              }
+          }
+      }
+  }
+
+  // Execute immediately
+  cleanUpInterface();
   
   // Test function to extract items from current page
   window.testItemExtraction = async function() {
@@ -4151,7 +9400,6 @@
       const response = await fetch('inventory.php');
       const html = await response.text();
       console.log('Fetched inventory HTML length:', html.length);
-      
       const items = extractItemDataFromHTML(html);
       console.log(`Found ${items.length} items from fetched inventory`);
       return items;
@@ -4162,5 +9410,16 @@
     }
   };
 
+  // Expose debugging functions to console for testing PvP system
+  if (typeof window !== 'undefined') {
+    window.pvpDebug = {
+      testDamageParsing: testDamageParsing,
+      analyzeBattleState: analyzeBattleState,
+      getCurrentPlayerName: getCurrentPlayerName,
+      validateHpChanges: validateHpChanges,
+      battleData: () => pvpBattleData,
+      settings: () => extensionSettings.pvpAutoSurrender
+    };
+    
 
-})();
+  }
