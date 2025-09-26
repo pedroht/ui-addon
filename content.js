@@ -705,6 +705,9 @@
         case 'manga':
           menuHTML += `<li><a href="index.php"><img src="images/menu/compressed_manga.webp" alt="Manga"> Manga-Manhwa-Manhua</a></li>`;
           break;
+        case 'settings':
+          menuHTML += `<li><a href="#" id="settings-link"><img src="images/menu/compressed_settings.webp" alt="Settings"> Settings</a></li>`;
+          break;
       }
     });
     
@@ -2729,10 +2732,13 @@
   }
 
   function initSettingsModal() {
-    document.getElementById('settings-link').addEventListener('click', (e) => {
-      e.preventDefault();
-      showSettingsModal();
-    });
+    const settingsLink = document.getElementById('settings-link');
+    if (settingsLink) {
+      settingsLink.addEventListener('click', (e) => {
+        e.preventDefault();
+        showSettingsModal();
+      });
+    }
   }
 
   function showSettingsModal() {
