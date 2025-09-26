@@ -7,7 +7,7 @@
 
   // Enhanced settings management
   var extensionSettings = {
-    sidebarColor: '#1e1e2e',
+    sidebarColor: '#1e1e1e',
     backgroundColor: '#000000',
     statAllocationCollapsed: true,
     sidebarCollapsed: false,
@@ -67,12 +67,15 @@
       enabled: false,
       interval: 10 // seconds
     },
-    pvpAutoSurrender: {
-      enabled: false,
-      surrenderThreshold: 0.2, // Surrender when win probability drops below 20%
-      showPrediction: true, // Always show win/loss prediction box
+    pvpBattlePrediction: {
+      enabled: true, // Show battle win/loss prediction
       analyzeAfterAttacks: 2 // Start analysis after this many attacks
     },
+    pvpAutoSurrender: {
+      enabled: false, // Auto-surrender feature
+      surrenderThreshold: 0.2 // Surrender when win probability drops below 20%
+    },
+    gateGraktharWave: 3, // Default wave for Gate Grakthar (wave 3 = gate=3&wave=3)
     menuItems: [
       { id: 'pvp', name: 'PvP Arena', visible: true, order: 0 },
       { id: 'orc_cull', name: 'War Drums of GRAKTHAR', visible: true, order: 1 },
@@ -90,8 +93,7 @@
       { id: 'leaderboard', name: 'Weekly Leaderboard', visible: true, order: 13 },
       { id: 'chat', name: 'Global Chat', visible: true, order: 14 },
       { id: 'patches', name: 'Patch Notes', visible: true, order: 15 },
-      { id: 'manga', name: 'Manga-Manhwa-Manhua', visible: true, order: 16 },
-      { id: 'settings', name: 'Settings', visible: true, order: 17 }
+      { id: 'manga', name: 'Manga-Manhwa-Manhua', visible: true, order: 16 }
     ]
   };
 
@@ -161,6 +163,10 @@
           waveAutoRefresh: {
             ...extensionSettings.waveAutoRefresh,
             ...savedSettings.waveAutoRefresh,
+          },
+          pvpBattlePrediction: {
+            ...extensionSettings.pvpBattlePrediction,
+            ...savedSettings.pvpBattlePrediction,
           },
           pvpAutoSurrender: {
             ...extensionSettings.pvpAutoSurrender,
@@ -564,7 +570,7 @@
           menuHTML += `<li><a href="active_wave.php?event=2&wave=6" draggable="false"><img src="/images/events/orc_cull/banner.webp" alt="War Drums of GRAKTHAR"> Event Battlefield</a></li>`;
           break;
         case 'gate_grakthar':
-          menuHTML += `<li><a href="active_wave.php?gate=3&wave=3"><img src="images/gates/gate_688e438aba7f24.99262397.webp" alt="Gate"> Gate Grakthar</a></li>`;
+          menuHTML += `<li><a href="active_wave.php?gate=3&wave=${extensionSettings.gateGraktharWave}"><img src="images/gates/gate_688e438aba7f24.99262397.webp" alt="Gate"> Gate Grakthar</a></li>`;
           break;
         case 'inventory':
           menuHTML += `<li><a href="inventory.php"><img src="images/menu/compressed_chest.webp" alt="Inventory"> Inventory & Equipment</a></li>`;
@@ -705,9 +711,7 @@
         case 'manga':
           menuHTML += `<li><a href="index.php"><img src="images/menu/compressed_manga.webp" alt="Manga"> Manga-Manhwa-Manhua</a></li>`;
           break;
-        case 'settings':
-          menuHTML += `<li><a href="#" id="settings-link"><img src="images/menu/compressed_settings.webp" alt="Settings"> Settings</a></li>`;
-          break;
+
       }
     });
     
@@ -1681,9 +1685,6 @@
       .settings-section-header:hover {
         background: rgba(255, 255, 255, 0.05);
         border-radius: 4px;
-        padding: 10px;
-        margin: -10px;
-        margin-bottom: 5px;
       }
 
       .expand-icon {
@@ -2732,13 +2733,8 @@
   }
 
   function initSettingsModal() {
-    const settingsLink = document.getElementById('settings-link');
-    if (settingsLink) {
-      settingsLink.addEventListener('click', (e) => {
-        e.preventDefault();
-        showSettingsModal();
-      });
-    }
+    // Settings modal is now handled by the topbar settings button
+    // No sidebar settings link needed
   }
 
   function showSettingsModal() {
@@ -2765,7 +2761,7 @@
             <div class="settings-section-content">
                     <p class="section-description">Choose a color theme for your side panel navigation.</p>
                     <div class="color-input-group">
-                      <input type="color" id="sidebar-custom-color" value="#1e1e2e">
+                      <input type="color" id="sidebar-custom-color" value="#2a2a2a">
                       <label>Custom Color</label>
             </div>
             </div>
@@ -2818,12 +2814,7 @@
 
 
           <div class="settings-section">
-            <h3>🐉 Monster Backgrounds (Always Enabled)</h3>
-            <div style="margin: 15px 0;">
-              <div style="margin-bottom: 15px;">
-                <p style="color: #94e2d5; margin: 0; font-size: 12px;">✨ Monster backgrounds are automatically applied when configured monsters are detected.</p>
-              </div>
-
+            <h3>🐉 Monster Backgrounds</h3>
               <div style="margin: 15px 0;">
                 <div style="margin-bottom: 15px; display: flex; align-items: center;">
                   <label style="color: #cdd6f4; display: flex; align-items: center;">
@@ -2997,38 +2988,61 @@
             </div>
           </div>
 
+          <!-- PvP Battle Features Section -->
           <div class="settings-section">
             <div class="settings-section-header">
-              <h3>⚔️ PvP Auto-Surrender</h3>
+              <h3>⚔️ PvP Battle Features</h3>
               <span class="expand-icon">–</span>
             </div>
             <div class="settings-section-content expanded">
-              <p style="color: #a6adc8; font-size: 12px; margin-bottom: 15px;">
-                Automatically surrender when losing is detected based on battle analysis.
+              <p style="color: #a6adc8; font-size: 12px; margin-bottom: 20px;">
+                Configure battle prediction and auto-surrender features for PvP battles.
               </p>
-              <div style="margin: 15px 0;">
+              
+              <!-- Battle Prediction Settings -->
+              <div style="margin-bottom: 25px; padding: 15px; background: rgba(49, 50, 68, 0.3); border-radius: 8px; border-left: 3px solid #89b4fa;">
+                <h4 style="color: #89b4fa; margin: 0 0 15px 0; font-size: 14px; display: flex; align-items: center; gap: 8px;">
+                  📊 Battle Prediction
+                </h4>
+                <p style="color: #a6adc8; font-size: 11px; margin-bottom: 15px;">
+                  Show win/loss probability predictions during PvP battles.
+                </p>
                 <label style="display: flex; align-items: center; gap: 10px; color: #cdd6f4; margin-bottom: 15px;">
-                    <input type="checkbox" id="pvp-auto-surrender-enabled" class="cyberpunk-checkbox">
-                  <span>Enable PvP auto-surrender</span>
+                  <input type="checkbox" id="pvp-prediction-enabled" class="cyberpunk-checkbox">
+                  <span>Enable battle prediction</span>
                 </label>
                 
                 <div style="margin: 15px 0;">
-                  <label style="color: #f9e2af; margin-bottom: 10px; display: block;">Surrender Threshold:</label>
-                  <select id="pvp-surrender-threshold" style="width: 200px; padding: 8px; background: #1e1e2e; color: #cdd6f4; border: 1px solid #45475a; border-radius: 4px; margin-bottom: 15px;">
-                    <option value="0.1">10% (Very Aggressive)</option>
-                    <option value="0.2" selected>20% (Aggressive)</option>
-                    <option value="0.3">30% (Moderate)</option>
-                    <option value="0.4">40% (Conservative)</option>
-                  </select>
-                </div>
-
-                <div style="margin: 15px 0;">
                   <label style="color: #f9e2af; margin-bottom: 10px; display: block;">Analysis Start:</label>
-                  <select id="pvp-analyze-after" style="width: 200px; padding: 8px; background: #1e1e2e; color: #cdd6f4; border: 1px solid #45475a; border-radius: 4px; margin-bottom: 15px;">
+                  <select id="pvp-analyze-after" style="width: 200px; padding: 8px; background: #1e1e2e; color: #cdd6f4; border: 1px solid #45475a; border-radius: 4px;">
                     <option value="1">After 1st attack</option>
                     <option value="2" selected>After 2nd attack</option>
                     <option value="3">After 3rd attack</option>
                     <option value="4">After 4th attack</option>
+                  </select>
+                </div>
+              </div>
+
+              <!-- Auto-Surrender Settings -->
+              <div style="margin-bottom: 15px; padding: 15px; background: rgba(49, 50, 68, 0.3); border-radius: 8px; border-left: 3px solid #f38ba8;">
+                <h4 style="color: #f38ba8; margin: 0 0 15px 0; font-size: 14px; display: flex; align-items: center; gap: 8px;">
+                  🏳️ Auto-Surrender
+                </h4>
+                <p style="color: #a6adc8; font-size: 11px; margin-bottom: 15px;">
+                  Automatically surrender when losing is detected. Requires battle prediction to be enabled.
+                </p>
+                <label style="display: flex; align-items: center; gap: 10px; color: #cdd6f4; margin-bottom: 15px;">
+                  <input type="checkbox" id="pvp-auto-surrender-enabled" class="cyberpunk-checkbox">
+                  <span>Enable auto-surrender</span>
+                </label>
+                
+                <div style="margin: 15px 0;">
+                  <label style="color: #f9e2af; margin-bottom: 10px; display: block;">Surrender Threshold:</label>
+                  <select id="pvp-surrender-threshold" style="width: 200px; padding: 8px; background: #1e1e2e; color: #cdd6f4; border: 1px solid #45475a; border-radius: 4px;">
+                    <option value="0.1">10% (Very Aggressive)</option>
+                    <option value="0.2" selected>20% (Aggressive)</option>
+                    <option value="0.3">30% (Moderate)</option>
+                    <option value="0.4">40% (Conservative)</option>
                   </select>
                 </div>
               </div>
@@ -3060,6 +3074,25 @@
             </div>
           </div>
 
+          <!-- Gate Grakthar Wave Selection Section -->
+          <div class="settings-section">
+            <div class="settings-section-header">
+              <h3>🚪 Gate Grakthar Configuration</h3>
+              <span class="expand-icon">–</span>
+            </div>
+            <div class="settings-section-content expanded">
+              <p style="color: #a6adc8; font-size: 12px; margin-bottom: 15px;">
+                Choose which wave the Gate Grakthar sidebar button redirects to.
+              </p>
+              <div style="margin: 15px 0;">
+                <label style="color: #f9e2af; margin-bottom: 10px; display: block;">Gate Grakthar Wave:</label>
+                <select id="gate-grakthar-wave" style="width: 250px; padding: 8px; background: #1e1e2e; color: #cdd6f4; border: 1px solid #45475a; border-radius: 4px;">
+                  <option value="3">Wave 1  - gate=3&wave=3</option>
+                  <option value="5">Wave 2  - gate=3&wave=5</option>
+                </select>
+              </div>
+            </div>
+          </div>
 
           <div class="settings-section">
             <h3 style="color: #f9e2af; margin-bottom: 15px;">📌 Pinned Items</h3>
@@ -3106,6 +3139,7 @@
         setupCustomBackgroundSettings();
       setupWaveAutoRefreshSettings();
       setupPvPAutoSurrenderSettings();
+      setupGateGraktharSettings();
       setupPinnedItemsLimitSettings();
       setupMenuCustomizationListeners();
         
@@ -3675,19 +3709,39 @@
   }
 
   function setupPvPAutoSurrenderSettings() {
-    const enabledCheckbox = document.getElementById('pvp-auto-surrender-enabled');
-    const thresholdSelect = document.getElementById('pvp-surrender-threshold');
+    // Battle Prediction Settings
+    const predictionEnabledCheckbox = document.getElementById('pvp-prediction-enabled');
     const analyzeAfterSelect = document.getElementById('pvp-analyze-after');
     
-    if (enabledCheckbox) {
-      enabledCheckbox.checked = extensionSettings.pvpAutoSurrender.enabled;
-      enabledCheckbox.addEventListener('change', (e) => {
-        extensionSettings.pvpAutoSurrender.enabled = e.target.checked;
+    // Auto-Surrender Settings
+    const surrenderEnabledCheckbox = document.getElementById('pvp-auto-surrender-enabled');
+    const thresholdSelect = document.getElementById('pvp-surrender-threshold');
+    
+    if (predictionEnabledCheckbox) {
+      predictionEnabledCheckbox.checked = extensionSettings.pvpBattlePrediction.enabled;
+      predictionEnabledCheckbox.addEventListener('change', (e) => {
+        extensionSettings.pvpBattlePrediction.enabled = e.target.checked;
         saveSettings();
         
         if (e.target.checked) {
           initPvPAutoSurrender();
         }
+      });
+    }
+    
+    if (analyzeAfterSelect) {
+      analyzeAfterSelect.value = extensionSettings.pvpBattlePrediction.analyzeAfterAttacks;
+      analyzeAfterSelect.addEventListener('change', (e) => {
+        extensionSettings.pvpBattlePrediction.analyzeAfterAttacks = parseInt(e.target.value);
+        saveSettings();
+      });
+    }
+    
+    if (surrenderEnabledCheckbox) {
+      surrenderEnabledCheckbox.checked = extensionSettings.pvpAutoSurrender.enabled;
+      surrenderEnabledCheckbox.addEventListener('change', (e) => {
+        extensionSettings.pvpAutoSurrender.enabled = e.target.checked;
+        saveSettings();
       });
     }
     
@@ -3698,16 +3752,21 @@
         saveSettings();
       });
     }
+  }
+
+  function setupGateGraktharSettings() {
+    const gateWaveSelect = document.getElementById('gate-grakthar-wave');
     
-    if (analyzeAfterSelect) {
-      analyzeAfterSelect.value = extensionSettings.pvpAutoSurrender.analyzeAfterAttacks;
-      analyzeAfterSelect.addEventListener('change', (e) => {
-        extensionSettings.pvpAutoSurrender.analyzeAfterAttacks = parseInt(e.target.value);
+    if (gateWaveSelect) {
+      gateWaveSelect.value = extensionSettings.gateGraktharWave;
+      gateWaveSelect.addEventListener('change', (e) => {
+        extensionSettings.gateGraktharWave = parseInt(e.target.value);
         saveSettings();
+        // Regenerate sidebar to apply new wave setting
+        generateSideBar();
+        showNotification('Gate Grakthar wave updated!', 'success');
       });
     }
-    
-    extensionSettings.pvpAutoSurrender.showPrediction = true; // Always show prediction
   }
 
   function populateMonsterUrlInputs() {
@@ -4560,7 +4619,7 @@
     const isPvPBattle = window.location.pathname.includes('pvp_battle.php') || 
                        document.querySelector('#enemyHero') !== null;
     
-    if (!isPvPBattle) return;
+    if (!isPvPBattle || !extensionSettings.pvpBattlePrediction.enabled) return;
     
     const existingBox = document.getElementById('pvp-prediction-box');
     if (existingBox) {
@@ -4589,8 +4648,9 @@
   function analyzeBattleState() {
     pvpBattleData.attackCount++;
     
-    // Only start analysis after specified number of attacks
-    if (pvpBattleData.attackCount < extensionSettings.pvpAutoSurrender.analyzeAfterAttacks) {
+    // Only start analysis if prediction is enabled and after specified number of attacks
+    if (!extensionSettings.pvpBattlePrediction.enabled || 
+        pvpBattleData.attackCount < extensionSettings.pvpBattlePrediction.analyzeAfterAttacks) {
       return;
     }
     
@@ -5132,7 +5192,6 @@
     
     // Position it at the very end of the topbar
     topbarRight.appendChild(settingsButton);
-    console.log('Topbar settings button added');
   }
 
   function createBackToDashboardButton() {
@@ -5480,7 +5539,7 @@
 
   function resetSettings() {
     extensionSettings = {
-      sidebarColor: '#1e1e2e',
+      sidebarColor: '#1e1e1e',
       backgroundColor: '#000000',
       statAllocationCollapsed: true,
       statsExpanded: false,
@@ -5494,7 +5553,8 @@
       pinnedInventoryItems: [],
       multiplePotsEnabled: false,
       multiplePotsCount: 3,
-      pinnedItemsLimit: 3
+      pinnedItemsLimit: 3,
+      gateGraktharWave: 3
     };
     saveSettings();
     applySettings();
@@ -5513,7 +5573,7 @@
       
       // Reset extension settings to default
       extensionSettings = {
-        sidebarColor: '#1e1e2e',
+        sidebarColor: '#1e1e1e',
         backgroundColor: '#000000',
         statAllocationCollapsed: true,
         statsExpanded: false,
@@ -5527,7 +5587,8 @@
         pinnedInventoryItems: [],
         multiplePotsEnabled: false,
         multiplePotsCount: 3,
-        pinnedItemsLimit: 3
+        pinnedItemsLimit: 3,
+        gateGraktharWave: 3
       };
       
       // Apply default settings
@@ -7853,12 +7914,18 @@
 
   function initPvPMods(){
     initPvPBannerFix();
-    // Always create prediction box
-    createPredictionBox();
-    // Then init auto-surrender if enabled
-    if (extensionSettings.pvpAutoSurrender.enabled) {
+    
+    // Initialize prediction and/or auto-surrender based on settings
+    if (extensionSettings.pvpBattlePrediction.enabled || extensionSettings.pvpAutoSurrender.enabled) {
+      // Create prediction box if prediction is enabled
+      if (extensionSettings.pvpBattlePrediction.enabled) {
+        createPredictionBox();
+      }
+      
+      // Initialize the system if either feature is enabled
       initPvPAutoSurrender();
     }
+    
     // Add battle highlighting
     highlightPvpBattles();
     // Make history collapsible
@@ -7965,6 +8032,8 @@
       if (logEl) {
         logEl.scrollTop = logEl.scrollHeight;
       }
+      createBackToDashboardButton();
+      removeOriginalBackButton();
   }
 
   function initInventoryMods(){
@@ -9399,7 +9468,7 @@
     return items;
   };
   
-  // Simple function that just fetches inventory without clicking show more
+  // Simple function that just fetches inventory
   window.getInventoryItemsSimple = async function() {
     console.log('Fetching inventory items (simple method)...');
     try {
@@ -9415,17 +9484,6 @@
       return [];
     }
   };
-
-  // Expose debugging functions to console for testing PvP system
-  if (typeof window !== 'undefined') {
-    window.pvpDebug = {
-      testDamageParsing: testDamageParsing,
-      analyzeBattleState: analyzeBattleState,
-      getCurrentPlayerName: getCurrentPlayerName,
-      validateHpChanges: validateHpChanges,
-      battleData: () => pvpBattleData,
-      settings: () => extensionSettings.pvpAutoSurrender
-    };
     
 
   }
