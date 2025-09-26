@@ -421,7 +421,7 @@
   function applySettings() {
     const sidebar = document.getElementById('game-sidebar');
     if (sidebar) {
-      sidebar.style.background = extensionSettings.sidebarColor;
+      sidebar.style.background = extensionSettings.sidebarColor + ' !important';
     }
     document.body.style.backgroundColor = extensionSettings.backgroundColor;
     
@@ -2092,7 +2092,7 @@
 
       /* Modern Sidebar Styling */
       #game-sidebar {
-        background: linear-gradient(135deg, #2a2a2a 0%, #1e1e1e 100%) !important;
+        background: ${extensionSettings.sidebarColor} !important;
         border-right: 2px solid #333 !important;
         box-shadow: 2px 0 20px rgba(0, 0, 0, 0.3) !important;
       }
