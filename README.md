@@ -62,21 +62,6 @@
 --- 
 # Installation
 
-## Chromium Based Browsers
-
-- Download the zip file
-- Extract file 
-- Go to Extensions
-- [Turn on developer mode](https://www.youtube.com/watch?v=drNTeGl41ns)
-- Press Load Unpacked and choose the extracted file
-
-## FireFox 
-
-- Download the file
-- Unzip the file
-- Delete the manifest.json file 
-- Go to /firefox subfolder and cut and copy to main folder
-- Go to [temporary extensions page](about:debugging#/runtime/this-firefox) 
-- Pres Load Extension and select the manifest.json
+- Go to the [latest release](https://github.com/asura-cr/ui-addon/releases/latest)
 
 
