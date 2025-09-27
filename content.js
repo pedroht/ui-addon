@@ -146,19 +146,24 @@
   function loadSettings() {
     const saved = localStorage.getItem('demonGameExtensionSettings');
     if (saved) {
-      const savedSettings = JSON.parse(saved);
-      // Deep merge settings
-      extensionSettings = {
-        ...extensionSettings,
-        ...savedSettings,
-        monsterBackgrounds: {
-          ...extensionSettings.monsterBackgrounds,
-          ...savedSettings.monsterBackgrounds,
-          monsters: {
-            ...extensionSettings.monsterBackgrounds?.monsters,
-            ...savedSettings.monsterBackgrounds?.monsters,
-          }
-        },
+      try {
+        const savedSettings = JSON.parse(saved);
+        console.log('Loading settings from localStorage:', {
+          monsterBackgrounds: savedSettings.monsterBackgrounds
+        });
+        
+        // Deep merge settings
+        extensionSettings = {
+          ...extensionSettings,
+          ...savedSettings,
+          monsterBackgrounds: {
+            ...extensionSettings.monsterBackgrounds,
+            ...savedSettings.monsterBackgrounds,
+            monsters: {
+              ...extensionSettings.monsterBackgrounds?.monsters,
+              ...savedSettings.monsterBackgrounds?.monsters,
+            }
+          },
         petNames: {
           ...extensionSettings.petNames,
           ...savedSettings.petNames,
@@ -196,6 +201,13 @@
           }
         },
       };
+      
+      console.log('Settings loaded successfully:', {
+        monsterCount: Object.keys(extensionSettings.monsterBackgrounds?.monsters || {}).length
+      });
+    } catch (error) {
+      console.error('Error loading settings:', error);
+    }
     }
     
     // Ensure menu customization settings exist
@@ -799,44 +811,54 @@
   // ===== END ADVANCED EQUIPMENT SETS SYSTEM =====
 
   function saveSettings() {
-    // Ensure required objects exist before saving
-    if (!extensionSettings.monsterBackgrounds) {
-      extensionSettings.monsterBackgrounds = {
-        enabled: false,
-        effect: 'normal',
-        overlay: true,
-        overlayOpacity: 0.4,
-        monsters: {}
-      };
-    }
-    if (!extensionSettings.monsterBackgrounds.monsters) {
-      extensionSettings.monsterBackgrounds.monsters = {};
-    }
-      
-      // Ensure customBackgrounds object exists
-      if (!extensionSettings.customBackgrounds) {
-        extensionSettings.customBackgrounds = {
-          enabled: true,
-          backgrounds: {}
+    try {
+      // Ensure required objects exist before saving
+      if (!extensionSettings.monsterBackgrounds) {
+        extensionSettings.monsterBackgrounds = {
+          enabled: false,
+          effect: 'normal',
+          overlay: true,
+          overlayOpacity: 0.4,
+          monsters: {}
         };
       }
-      if (!extensionSettings.customBackgrounds.backgrounds) {
-        extensionSettings.customBackgrounds.backgrounds = {};
-    }
-
-    // Deep clone settings to ensure all nested objects are properly saved
-    const settingsToSave = JSON.parse(JSON.stringify({
-      ...extensionSettings,
-      monsterBackgrounds: {
-        ...extensionSettings.monsterBackgrounds,
-        monsters: { ...extensionSettings.monsterBackgrounds.monsters }
-        },
-        customBackgrounds: {
-          ...extensionSettings.customBackgrounds,
-          backgrounds: { ...extensionSettings.customBackgrounds.backgrounds }
+      if (!extensionSettings.monsterBackgrounds.monsters) {
+        extensionSettings.monsterBackgrounds.monsters = {};
       }
-    }));
-    localStorage.setItem('demonGameExtensionSettings', JSON.stringify(settingsToSave));
+        
+        // Ensure customBackgrounds object exists
+        if (!extensionSettings.customBackgrounds) {
+          extensionSettings.customBackgrounds = {
+            enabled: true,
+            backgrounds: {}
+          };
+        }
+        if (!extensionSettings.customBackgrounds.backgrounds) {
+          extensionSettings.customBackgrounds.backgrounds = {};
+      }
+
+      // Deep clone settings to ensure all nested objects are properly saved
+      const settingsToSave = JSON.parse(JSON.stringify({
+        ...extensionSettings,
+        monsterBackgrounds: {
+          ...extensionSettings.monsterBackgrounds,
+          monsters: { ...extensionSettings.monsterBackgrounds.monsters }
+          },
+          customBackgrounds: {
+            ...extensionSettings.customBackgrounds,
+            backgrounds: { ...extensionSettings.customBackgrounds.backgrounds }
+        }
+      }));
+      
+      localStorage.setItem('demonGameExtensionSettings', JSON.stringify(settingsToSave));
+      console.log('Settings saved successfully:', {
+        monsterCount: Object.keys(extensionSettings.monsterBackgrounds.monsters).length,
+        monsters: extensionSettings.monsterBackgrounds.monsters
+      });
+    } catch (error) {
+      console.error('Error saving settings:', error);
+      showNotification('Error saving settings: ' + error.message, 'error');
+    }
   }
 
 
@@ -1640,6 +1662,7 @@
         background: ${extensionSettings.sidebarColor};
         border-right: 1px solid rgba(255, 255, 255, 0.06);
         flex-shrink: 0;
+        padding: 15px 0;
         overflow-y: auto;
         position: fixed;
         top: 55px;
@@ -1649,7 +1672,7 @@
       }
 
       .sidebar-header {
-        padding: 15px 20px 15px;
+        padding: 0 20px 15px;
         border-bottom: 1px solid rgba(255, 255, 255, 0.06);
         margin-bottom: 15px;
       }
@@ -2792,7 +2815,7 @@
       }
 
       #game-sidebar.collapsed .sidebar-header {
-        padding: 10px !important;
+        padding: 15px 10px !important;
         text-align: center;
         position: relative;
       }
@@ -2821,7 +2844,7 @@
       }
 
       #game-sidebar.collapsed .sidebar-menu li a {
-        padding: 10px !important;
+        padding: 12px 10px !important;
         justify-content: center !important;
         display: flex !important;
         align-items: center !important;
@@ -3447,9 +3470,14 @@
                 <div id="monster-url-inputs">
                   <!-- Monster URL inputs will be populated here -->
                 </div>
-                <button type="button" id="add-monster-url" class="settings-button" style="background: #89b4fa; margin-top: 10px;">
-                  ➕ Add Monster Background
-                </button>
+                <div style="display: flex; gap: 10px; margin-top: 10px;">
+                  <button type="button" id="add-monster-url" class="settings-button" style="background: #89b4fa;">
+                    ➕ Add Monster Background
+                  </button>
+                  <button type="button" id="save-monster-backgrounds" class="settings-button" style="background: #a6e3a1;">
+                    💾 Save Changes
+                  </button>
+                </div>
               </div>
             </div>
           </div>
@@ -3949,11 +3977,15 @@
     // Populate existing monster URLs
     populateMonsterUrlInputs();
     
-    // Use event delegation for the add button and remove buttons
+    // Use event delegation for the add button, save button, and remove buttons
     document.addEventListener('click', (e) => {
       if (e.target && e.target.id === 'add-monster-url') {
         e.preventDefault();
         addMonsterUrlInput();
+      } else if (e.target && e.target.id === 'save-monster-backgrounds') {
+        e.preventDefault();
+        updateMonsterUrlMapping();
+        showNotification('Monster backgrounds saved successfully!', 'success');
       } else if (e.target && e.target.getAttribute('data-action') === 'remove-monster-url') {
         e.preventDefault();
         removeMonsterUrlInput(e.target);
@@ -4588,7 +4620,10 @@
 
   function updateMonsterUrlMapping() {
     const container = document.getElementById('monster-url-inputs');
-    if (!container) return;
+    if (!container) {
+      console.log('Monster URL container not found');
+      return;
+    }
     
     // Ensure monsterBackgrounds and monsters objects exist
     if (!extensionSettings.monsterBackgrounds) {
@@ -4621,8 +4656,17 @@
       }
     });
     
+    console.log('Saving monster backgrounds:', newMonsters);
     extensionSettings.monsterBackgrounds.monsters = newMonsters;
-    saveSettings();
+    
+    // Verify save was successful
+    try {
+      saveSettings();
+      console.log('Monster backgrounds saved successfully');
+    } catch (error) {
+      console.error('Error saving monster backgrounds:', error);
+    }
+    
     applyMonsterBackgrounds();
   }
 
@@ -10363,6 +10407,3 @@
       return [];
     }
   };
-    
-
-  
