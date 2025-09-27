@@ -22,7 +22,7 @@
     pinnedInventoryItems: [],
     multiplePotsEnabled: false,
     multiplePotsCount: 3,
-    pinnedItemsLimit: 3,
+    pinnedItemsLimit: 10,
     battlePageHideImages: false,
     monsterImageOutlineColor: '#ff6b6b',
     lootCardBorderColor: '#f38ba8',
@@ -37,7 +37,15 @@
         'Orc Archer': 'https://raw.githubusercontent.com/asura-cr/ui-addon/refs/heads/main/images/windows_battlefield1.png',
         'Orc Grunt of Grakthar': 'https://raw.githubusercontent.com/asura-cr/ui-addon/refs/heads/main/images/windows_battlefield1.png',
         'Orc Berserker': 'https://raw.githubusercontent.com/asura-cr/ui-addon/refs/heads/main/images/windows_battlefield1.png',
-        'Orc Shaman': 'https://raw.githubusercontent.com/asura-cr/ui-addon/refs/heads/main/images/windows_battlefield1.png'
+        'Orc Shaman': 'https://raw.githubusercontent.com/asura-cr/ui-addon/refs/heads/main/images/windows_battlefield1.png',
+        'Drum War Chief': 'https://raw.githubusercontent.com/asura-cr/ui-addon/refs/heads/main/images/Storm%20Caller%20Warchief.png',
+        'Iron Warchief': 'https://raw.githubusercontent.com/asura-cr/ui-addon/refs/heads/main/images/Iron%20Warchief.png',
+        'Bone-Seer Warchief': 'https://raw.githubusercontent.com/asura-cr/ui-addon/refs/heads/main/images/Bone-Seer%20Warchief.png',
+        'Siege-Ram Captain': 'https://raw.githubusercontent.com/asura-cr/ui-addon/refs/heads/main/images/Siege-Ram%20Captain.png',
+        'Storm-Caller Warchief': 'https://raw.githubusercontent.com/asura-cr/ui-addon/refs/heads/main/images/Storm%20Caller%20Warchief.png',
+        'Ash-Blade Warchief': 'https://raw.githubusercontent.com/asura-cr/ui-addon/refs/heads/main/images/Ash-Blade%20Warchief.png',
+        'Mountain Warchief': 'https://raw.githubusercontent.com/asura-cr/ui-addon/refs/heads/main/images/Mountain%20Warchief.png',
+        'Orc King of Grakthar': 'https://raw.githubusercontent.com/asura-cr/ui-addon/refs/heads/main/images/Orc%20King%20of%20Grakthar.png'
       } // Will store monster name -> URL mappings
     },
     petNames: {
@@ -64,7 +72,7 @@
         }
     },
     waveAutoRefresh: {
-      enabled: false,
+      enabled: true,
       interval: 10 // seconds
     },
     pvpBattlePrediction: {
@@ -76,6 +84,12 @@
       surrenderThreshold: 0.2 // Surrender when win probability drops below 20%
     },
     gateGraktharWave: 3, // Default wave for Gate Grakthar (wave 3 = gate=3&wave=3)
+    equipSets: {
+      enabled: true, // Enable equip sets functionality
+      storageKey: 'demonGameEquipSets',
+      applyDelay: 350, // Delay between equipment applications (ms)
+      showInSidebar: true // Show equip sets in sidebar
+    },
     menuItems: [
       { id: 'pvp', name: 'PvP Arena', visible: true, order: 0 },
       { id: 'orc_cull', name: 'War Drums of GRAKTHAR', visible: true, order: 1 },
@@ -83,17 +97,17 @@
       { id: 'gate_grakthar', name: 'Gate Grakthar', visible: true, order: 3 },
       { id: 'inventory', name: 'Inventory & Equipment', visible: true, order: 4 },
       { id: 'pets', name: 'Pets & Eggs', visible: true, order: 5 },
-      { id: 'stats', name: 'Stats', visible: true, order: 6 },
-      { id: 'blacksmith', name: 'Blacksmith', visible: true, order: 7 },
-      { id: 'merchant', name: 'Merchant', visible: true, order: 8 },
-      { id: 'inventory_quick', name: 'Inventory Quick Access', visible: true, order: 9 },
-      { id: 'achievements', name: 'Achievements', visible: true, order: 10 },
-      { id: 'collections', name: 'Collections', visible: true, order: 11 },
-      { id: 'guide', name: 'How To Play', visible: true, order: 12 },
-      { id: 'leaderboard', name: 'Weekly Leaderboard', visible: true, order: 13 },
-      { id: 'chat', name: 'Global Chat', visible: true, order: 14 },
-      { id: 'patches', name: 'Patch Notes', visible: true, order: 15 },
-      { id: 'manga', name: 'Manga-Manhwa-Manhua', visible: true, order: 16 }
+      { id: 'stats', name: 'Stats', visible: true, order: 7 },
+      { id: 'blacksmith', name: 'Blacksmith', visible: true, order: 8 },
+      { id: 'merchant', name: 'Merchant', visible: true, order: 9 },
+      { id: 'inventory_quick', name: 'Inventory Quick Access', visible: true, order: 10 },
+      { id: 'achievements', name: 'Achievements', visible: true, order: 11 },
+      { id: 'collections', name: 'Collections', visible: true, order: 12 },
+      { id: 'guide', name: 'How To Play', visible: true, order: 13 },
+      { id: 'leaderboard', name: 'Weekly Leaderboard', visible: true, order: 14 },
+      { id: 'chat', name: 'Global Chat', visible: true, order: 15 },
+      { id: 'patches', name: 'Patch Notes', visible: true, order: 16 },
+      { id: 'manga', name: 'Manga-Manhwa-Manhua', visible: true, order: 17 }
     ]
   };
 
@@ -111,6 +125,7 @@
     '/blacksmith.php': initBlacksmithMods,
     '/merchant.php': initMerchantMods,
     '/orc_cull_event.php': initEventMods,
+    '/weekly.php': initLeaderboardMods,
   };
 
   // Automatic retrieval of userId from cookie
@@ -195,18 +210,18 @@
         { id: 'gate_grakthar', name: 'Gate Grakthar', visible: true, order: 3 },
         { id: 'inventory', name: 'Inventory & Equipment', visible: true, order: 4 },
         { id: 'pets', name: 'Pets & Eggs', visible: true, order: 5 },
-        { id: 'stats', name: 'Stats', visible: true, order: 6 },
-        { id: 'blacksmith', name: 'Blacksmith', visible: true, order: 7 },
-        { id: 'merchant', name: 'Merchant', visible: true, order: 8 },
-        { id: 'inventory_quick', name: 'Inventory Quick Access', visible: true, order: 9 },
-        { id: 'achievements', name: 'Achievements', visible: true, order: 10 },
-        { id: 'collections', name: 'Collections', visible: true, order: 11 },
-        { id: 'guide', name: 'How To Play', visible: true, order: 12 },
-        { id: 'leaderboard', name: 'Weekly Leaderboard', visible: true, order: 13 },
-        { id: 'chat', name: 'Global Chat', visible: true, order: 14 },
-        { id: 'patches', name: 'Patch Notes', visible: true, order: 15 },
-        { id: 'manga', name: 'Manga-Manhwa-Manhua', visible: true, order: 16 },
-        { id: 'settings', name: 'Settings', visible: true, order: 17 }
+        { id: 'stats', name: 'Stats', visible: true, order: 7 },
+        { id: 'blacksmith', name: 'Blacksmith', visible: true, order: 8 },
+        { id: 'merchant', name: 'Merchant', visible: true, order: 9 },
+        { id: 'inventory_quick', name: 'Inventory Quick Access', visible: true, order: 10 },
+        { id: 'achievements', name: 'Achievements', visible: true, order: 11 },
+        { id: 'collections', name: 'Collections', visible: true, order: 12 },
+        { id: 'guide', name: 'How To Play', visible: true, order: 13 },
+        { id: 'leaderboard', name: 'Weekly Leaderboard', visible: true, order: 14 },
+        { id: 'chat', name: 'Global Chat', visible: true, order: 15 },
+        { id: 'patches', name: 'Patch Notes', visible: true, order: 16 },
+        { id: 'manga', name: 'Manga-Manhwa-Manhua', visible: true, order: 17 },
+        { id: 'settings', name: 'Settings', visible: true, order: 18 }
       ];
     }
 
@@ -247,6 +262,541 @@
       applyCustomBackgrounds();
     applyMonsterBackgrounds();
   }
+
+  // ===== ADVANCED EQUIPMENT SETS SYSTEM =====
+
+  const EQUIP_STORAGE_KEY = "equip_sets_v1";
+  const EQUIP_APPLY_DELAY = 350;
+
+  // Equipment sets utility functions
+  function equipSetsSelector(sel, root = document) {
+    return root.querySelector(sel);
+  }
+
+  function equipSetsSelectAll(sel, root = document) {
+    return Array.from(root.querySelectorAll(sel));
+  }
+
+  function parseOnclickAdvanced(onclick) {
+    if (!onclick) return null;
+    const m = onclick.match(/showEquipModal\(([^)]*)\)/);
+    if (!m) return null;
+    const parts = m[1].split(",").map((p) => p.trim());
+    const itemId = parts[0] ? parts[0].replace(/[^0-9\-]/g, "") : null;
+    const type = parts[1] ? parts[1].replace(/^['"]|['"]$/g, "").trim() : null;
+    const invId = parts[2] ? parts[2].replace(/^['"]|['"]$/g, "").trim() : null;
+    return invId && type ? { itemId, type, invId } : null;
+  }
+
+  function getEquipStorageSets() {
+    try {
+      const raw = localStorage.getItem(EQUIP_STORAGE_KEY);
+      return raw ? JSON.parse(raw) : {};
+    } catch (error) {
+      console.error('Error loading equip sets:', error);
+      return {};
+    }
+  }
+
+  function saveEquipStorageSets(obj) {
+    try {
+      localStorage.setItem(EQUIP_STORAGE_KEY, JSON.stringify(obj));
+    } catch (error) {
+      console.error('Error saving equip sets:', error);
+    }
+  }
+
+  // Equipment sets integrated UI builder
+  function addEquipSetsToInventory() {
+    if (document.getElementById('integrated-equip-sets')) return;
+    
+    const container = document.querySelector('.section');
+    if (!container) return;
+    
+    const equipSetsPanel = document.createElement('div');
+    equipSetsPanel.id = 'integrated-equip-sets';
+    equipSetsPanel.innerHTML = `
+      <div style="background: rgba(30, 30, 46, 0.8); border: 1px solid rgba(43, 46, 73, 0.6); border-radius: 10px; padding: 20px; margin: 20px 0; backdrop-filter: blur(10px);">
+        <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 15px; cursor: pointer;" id="equip-sets-header">
+          <div style="font-size: 18px; font-weight: 800; color: #f9e2af;">⚡ Equipment Sets</div>
+          <div id="equip-sets-toggle" style="font-size: 16px; color: #89b4fa; transition: transform 0.3s ease;">▼</div>
+        </div>
+        
+        <div id="equip-sets-content" style="transition: all 0.3s ease; overflow: hidden;">
+          <div style="display: flex; gap: 10px; margin-bottom: 15px;">
+            <input id="new-set-name" placeholder="Enter set name..." style="flex: 1; padding: 8px 12px; background: rgba(20, 20, 26, 0.7); border: 1px solid rgba(51, 51, 51, 0.5); border-radius: 6px; color: #fff; font-size: 14px;" />
+            <button id="record-equipment-btn" class="equip-btn record-btn">⤴ Select Equipment</button>
+          </div>
+          
+          <div id="equipment-preview" style="min-height: 60px; padding: 10px; background: rgba(20, 20, 26, 0.3); border: 1px solid rgba(51, 51, 51, 0.4); border-radius: 6px; margin-bottom: 15px;">
+            <div style="color: #9aa0b8; text-align: center; font-size: 12px;">No items selected. Click "Select Equipment" then click on equipped items.</div>
+          </div>
+          
+          <div style="display: flex; gap: 10px; margin-bottom: 15px;">
+            <button id="save-equipment-set" class="equip-btn save-set">💾 Save Equipment Set</button>
+          </div>
+          
+          <div id="integrated-sets-list" style="max-height: 200px; overflow-y: auto;">
+            <!-- Sets will be loaded here -->
+          </div>
+        </div>
+      </div>
+    `;
+    
+    const style = document.createElement('style');
+    style.textContent = `
+      .equip-btn {
+        padding: 8px 16px;
+        border: none;
+        border-radius: 6px;
+        cursor: pointer;
+        font-weight: 600;
+        font-size: 12px;
+        transition: all 0.2s ease;
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+      }
+      
+      .equip-btn.record-btn {
+        background: linear-gradient(135deg, #89b4fa 0%, #74c7ec 100%);
+        color: #1e1e2e;
+      }
+      
+      .equip-btn.save-set {
+        background: linear-gradient(135deg, #a6e3a1 0%, #94e2d5 100%);
+        color: #1e1e2e;
+      }
+      
+      #equip-sets-header {
+        border-radius: 6px;
+        padding: 8px;
+        margin: -8px;
+        transition: all 0.2s ease;
+        user-select: none;
+      }
+      
+      #equip-sets-header:hover {
+        background: rgba(137, 180, 250, 0.1) !important;
+      }
+      
+      #equip-sets-content {
+        transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+      }
+      
+      .equip-btn.apply-set {
+        background: linear-gradient(135deg, #89b4fa 0%, #74c7ec 100%);
+        color: #1e1e2e;
+        font-size: 11px;
+        padding: 6px 12px;
+      }
+      
+      .equip-btn.delete-set {
+        background: linear-gradient(135deg, #f38ba8 0%, #eba0ac 100%);
+        color: #1e1e2e;
+        font-size: 11px;
+        padding: 6px 12px;
+      }
+      
+      .equip-btn:hover {
+        transform: translateY(-1px);
+        filter: brightness(1.05);
+      }
+      
+      .equip-set-item {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 12px;
+        background: rgba(30, 30, 46, 0.4);
+        border: 1px solid rgba(69, 71, 90, 0.5);
+        border-radius: 8px;
+        margin-bottom: 8px;
+        backdrop-filter: blur(5px);
+      }
+      
+      .equip-set-name {
+        font-weight: 600;
+        color: #f9e2af;
+        flex: 1;
+      }
+      
+      .equip-set-preview {
+        display: flex;
+        gap: 5px;
+        margin: 5px 0;
+      }
+      
+      .equip-set-preview img {
+        width: 24px;
+        height: 24px;
+        border-radius: 3px;
+        border: 1px solid #45475a;
+      }
+      
+      .equip-set-actions {
+        display: flex;
+        gap: 8px;
+      }
+      
+      .preview-item {
+        display: inline-block;
+        margin: 4px;
+        padding: 4px;
+        background: rgba(49, 50, 68, 0.6);
+        border: 1px solid rgba(69, 71, 90, 0.4);
+        border-radius: 4px;
+        position: relative;
+        backdrop-filter: blur(3px);
+      }
+      
+      .preview-item img {
+        width: 32px;
+        height: 32px;
+        border-radius: 2px;
+      }
+      
+      .preview-item .remove-btn {
+        position: absolute;
+        top: -6px;
+        right: -6px;
+        background: #f38ba8;
+        color: #1e1e2e;
+        border: none;
+        border-radius: 50%;
+        width: 18px;
+        height: 18px;
+        font-size: 10px;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+    `;
+    
+    document.head.appendChild(style);
+    container.insertBefore(equipSetsPanel, container.firstChild);
+    
+    // Add event listeners after the panel is added to DOM
+    setTimeout(() => {
+      const recordBtn = document.getElementById('record-equipment-btn');
+      const saveBtn = document.getElementById('save-equipment-set');
+      const header = document.getElementById('equip-sets-header');
+      const content = document.getElementById('equip-sets-content');
+      const toggle = document.getElementById('equip-sets-toggle');
+      
+      if (recordBtn) {
+        recordBtn.addEventListener('click', window.startEquipRecordingSelection);
+      }
+      
+      if (saveBtn) {
+        saveBtn.addEventListener('click', window.saveCurrentEquipmentSet);
+      }
+      
+      // Toggle collapse/expand functionality
+      if (header && content && toggle) {
+        let isCollapsed = false;
+        
+        header.addEventListener('click', () => {
+          isCollapsed = !isCollapsed;
+          
+          if (isCollapsed) {
+            content.style.maxHeight = '0px';
+            content.style.opacity = '0';
+            content.style.marginTop = '0px';
+            toggle.style.transform = 'rotate(-90deg)';
+            toggle.textContent = '▶';
+          } else {
+            content.style.maxHeight = '1000px';
+            content.style.opacity = '1';
+            content.style.marginTop = '15px';
+            toggle.style.transform = 'rotate(0deg)';
+            toggle.textContent = '▼';
+          }
+        });
+        
+        // Add hover effect to header
+        header.addEventListener('mouseenter', () => {
+          header.style.backgroundColor = 'rgba(137, 180, 250, 0.1)';
+        });
+        
+        header.addEventListener('mouseleave', () => {
+          header.style.backgroundColor = 'transparent';
+        });
+      }
+    }, 100);
+  }
+
+
+
+  // Apply equipment set with advanced logic
+  async function applyAdvancedEquipSet(setObj) {
+    showNotification("Applying equipment set...", 'info');
+    
+    const urlSet = new URLSearchParams(location.search).get("set") || "attack";
+    
+    for (const [slot, data] of Object.entries(setObj)) {
+      const invId = typeof data === "string" ? data : data.invId;
+      const slot_id = typeof data === "object" && data.slot_id != null ? data.slot_id : 0;
+      
+      try {
+        const res = await fetch("inventory_ajax.php", {
+          method: "POST",
+          headers: { "Content-Type": "application/x-www-form-urlencoded" },
+          body: `action=equip_item&inv_id=${encodeURIComponent(
+            invId
+          )}&slot_id=${slot_id}&set=${encodeURIComponent(urlSet)}`,
+        });
+        const txt = await res.text();
+        if (txt.trim() !== "OK") {
+          console.warn("[EquipSets] non-OK response:", txt);
+        }
+      } catch (e) {
+        console.error("Equipment set error:", e);
+      }
+      
+      await new Promise((resolve) => setTimeout(resolve, EQUIP_APPLY_DELAY));
+    }
+    
+    showNotification("Equipment set applied successfully! Reloading...", 'success');
+    setTimeout(() => location.reload(), 800);
+  }
+
+  // Initialize equipment sets on inventory page
+  function initializeEquipmentSets() {
+    if (location.pathname.includes("inventory.php")) {
+      setTimeout(() => {
+        addEquipSetsToInventory();
+        loadIntegratedSets();
+      }, 600);
+    }
+  }
+
+  // Equipment sets recording and management for integrated UI
+  let currentEquipRecord = {};
+  let isRecording = false;
+
+  // Start recording equipment selection
+  window.startEquipRecordingSelection = function() {
+    if (isRecording) {
+      stopEquipRecordingSelection();
+      return;
+    }
+    
+    isRecording = true;
+    currentEquipRecord = {};
+    
+    document.querySelectorAll(".slot-box").forEach(box => {
+      const equipBtn = box.querySelector('button[onclick^="showEquipModal"]');
+      if (!equipBtn) return;
+      
+      box.style.outline = "2px dashed #5cd65c";
+      const handler = (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        
+        const parsed = parseOnclickAdvanced(equipBtn.getAttribute("onclick") || "");
+        if (!parsed) return;
+        
+        const img = box.querySelector("img")?.src || "";
+        const name = box.querySelector("img")?.alt || "";
+        
+        let targetSlot = parsed.type;
+        let slot_id = 0;
+        
+        if (parsed.type === "ring") {
+          const choice = prompt(
+            "Is this ring RING 1 (slot_id=6) or RING 2 (slot_id=9)? Enter 1 or 2:",
+            "1"
+          );
+          if (choice === "2") {
+            targetSlot = "ring2";
+            slot_id = 9;
+          } else {
+            targetSlot = "ring1";
+            slot_id = 6;
+          }
+        }
+        
+        currentEquipRecord[targetSlot] = {
+          invId: parsed.invId,
+          img,
+          name,
+          slot_id,
+        };
+        
+        updateEquipmentPreview();
+        showNotification(`Added ${name} to equipment set`, 'success');
+      };
+      
+      box.__equipHandler = handler;
+      box.addEventListener("click", handler, true);
+    });
+    
+    const recordBtn = document.getElementById('record-equipment-btn');
+    if (recordBtn) {
+      recordBtn.textContent = "⤵ Stop Selection";
+      recordBtn.style.background = "#f38ba8";
+    }
+    
+    showNotification('Selection mode active: Click on equipped items to add to set', 'info');
+  };
+
+  function stopEquipRecordingSelection() {
+    isRecording = false;
+    
+    document.querySelectorAll(".slot-box").forEach(box => {
+      box.style.outline = "";
+      if (box.__equipHandler) {
+        box.removeEventListener("click", box.__equipHandler, true);
+        delete box.__equipHandler;
+      }
+    });
+    
+    const recordBtn = document.getElementById('record-equipment-btn');
+    if (recordBtn) {
+      recordBtn.textContent = "⤴ Select Equipment";
+      recordBtn.style.background = "";
+    }
+    
+    showNotification('Selection stopped', 'info');
+  }
+
+  function updateEquipmentPreview() {
+    const preview = document.getElementById('equipment-preview');
+    if (!preview) return;
+    
+    const items = Object.entries(currentEquipRecord);
+    
+    if (items.length === 0) {
+      preview.innerHTML = '<div style="color: #9aa0b8; text-align: center; font-size: 12px;">No items selected. Click "Select Equipment" then click on equipped items.</div>';
+      return;
+    }
+    
+    // Clear existing content
+    preview.innerHTML = '';
+    
+    // Create elements with proper event listeners
+    items.forEach(([slot, data]) => {
+      const itemElement = document.createElement('div');
+      itemElement.className = 'preview-item';
+      itemElement.innerHTML = `
+        <img src="${data.img}" alt="${data.name}" title="${data.name}" />
+        <button class="remove-btn">×</button>
+        <div style="font-size: 10px; color: #cdd6f4; text-align: center; margin-top: 2px;">${slot}</div>
+      `;
+      
+      // Add event listener for remove button
+      const removeBtn = itemElement.querySelector('.remove-btn');
+      removeBtn.addEventListener('click', () => removeFromPreview(slot));
+      
+      preview.appendChild(itemElement);
+    });
+  }
+
+  function removeFromPreview(slot) {
+    delete currentEquipRecord[slot];
+    updateEquipmentPreview();
+    showNotification(`Removed ${slot} from selection`, 'info');
+  }
+
+  window.saveCurrentEquipmentSet = function() {
+    const setName = document.getElementById('new-set-name')?.value?.trim();
+    if (!setName) {
+      showNotification('Please enter a set name', 'error');
+      return;
+    }
+    
+    if (Object.keys(currentEquipRecord).length === 0) {
+      showNotification('No equipment selected. Please select items first.', 'error');
+      return;
+    }
+    
+    const sets = getEquipStorageSets();
+    sets[setName] = { ...currentEquipRecord };
+    saveEquipStorageSets(sets);
+    
+    // Clear selection
+    currentEquipRecord = {};
+    updateEquipmentPreview();
+    const nameInput = document.getElementById('new-set-name');
+    if (nameInput) nameInput.value = '';
+    
+    loadIntegratedSets();
+    showNotification(`Equipment set "${setName}" saved successfully!`, 'success');
+  };
+
+  window.applyEquipSet = function(setName) {
+    const sets = getEquipStorageSets();
+    const setData = sets[setName];
+    if (!setData) {
+      showNotification('Equipment set not found', 'error');
+      return;
+    }
+    
+    applyAdvancedEquipSet(setData);
+  };
+
+  window.deleteEquipSet = function(setName) {
+    if (!confirm(`Are you sure you want to delete the equipment set "${setName}"?`)) return;
+    
+    const sets = getEquipStorageSets();
+    delete sets[setName];
+    saveEquipStorageSets(sets);
+    
+    loadIntegratedSets();
+    showNotification(`Equipment set "${setName}" deleted`, 'success');
+  };
+
+  function loadIntegratedSets() {
+    const listContainer = document.getElementById('integrated-sets-list');
+    if (!listContainer) return;
+    
+    const sets = getEquipStorageSets();
+    const setNames = Object.keys(sets);
+    
+    if (setNames.length === 0) {
+      listContainer.innerHTML = '<div style="text-align: center; color: #6c7086; padding: 20px;">No equipment sets saved yet</div>';
+      return;
+    }
+    
+    // Clear existing content
+    listContainer.innerHTML = '';
+    
+    // Create elements for each set with proper event listeners
+    setNames.forEach(setName => {
+      const setData = sets[setName];
+      const equipmentList = Object.values(setData);
+      
+      const setElement = document.createElement('div');
+      setElement.className = 'equip-set-item';
+      setElement.innerHTML = `
+        <div>
+          <div class="equip-set-name">${setName}</div>
+          <div class="equip-set-preview">
+            ${equipmentList.slice(0, 6).map(item => `<img src="${item.img}" title="${item.name}" />`).join('')}
+            ${equipmentList.length > 6 ? `<span style="color: #6c7086; font-size: 12px;">+${equipmentList.length - 6} more</span>` : ''}
+          </div>
+          <div style="font-size: 12px; color: #6c7086;">${Object.keys(setData).length} items</div>
+        </div>
+        <div class="equip-set-actions">
+          <button class="equip-btn apply-set">⚡ Apply</button>
+          <button class="equip-btn delete-set">🗑️ Delete</button>
+        </div>
+      `;
+      
+      // Add event listeners
+      const applyBtn = setElement.querySelector('.apply-set');
+      const deleteBtn = setElement.querySelector('.delete-set');
+      
+      applyBtn.addEventListener('click', () => window.applyEquipSet(setName));
+      deleteBtn.addEventListener('click', () => window.deleteEquipSet(setName));
+      
+      listContainer.appendChild(setElement);
+    });
+  }
+
+  // ===== END ADVANCED EQUIPMENT SETS SYSTEM =====
 
   function saveSettings() {
     // Ensure required objects exist before saving
@@ -399,6 +949,7 @@
         document.body.style.backgroundPosition = '';
         document.body.style.backgroundRepeat = '';
         document.body.style.backgroundAttachment = '';
+        document.body.style.filter = '';
         return;
       }
 
@@ -406,13 +957,46 @@
       const customBg = extensionSettings.customBackgrounds.backgrounds[currentPage];
       
       if (customBg) {
-        document.documentElement.style.setProperty('--page-bg-image', `url('${customBg}')`);
+        // Handle both old format (string) and new format (object with url and effect)
+        const url = typeof customBg === 'string' ? customBg : customBg.url;
+        const effect = typeof customBg === 'string' ? 'normal' : customBg.effect;
+        
+        let filterCSS = '';
+        let backgroundImage = `url('${url}')`;
+        
+        // Apply effects
+        switch (effect) {
+          case 'gradient':
+            backgroundImage = `linear-gradient(rgba(74, 0, 224, 0.3), rgba(142, 45, 226, 0.3)), url('${url}')`;
+            break;
+          case 'blur':
+            filterCSS = 'blur(2px)';
+            break;
+          case 'pattern':
+            backgroundImage = `
+              repeating-linear-gradient(
+                45deg,
+                transparent,
+                transparent 2px,
+                rgba(74, 0, 224, 0.1) 2px,
+                rgba(74, 0, 224, 0.1) 4px
+              ),
+              url('${url}')
+            `;
+            break;
+          default: // normal
+            // No additional effects
+            break;
+        }
+        
+        document.documentElement.style.setProperty('--page-bg-image', backgroundImage);
         // Also apply directly to body to override inline styles
-        document.body.style.backgroundImage = `url('${customBg}')`;
+        document.body.style.backgroundImage = backgroundImage;
         document.body.style.backgroundSize = 'cover';
         document.body.style.backgroundPosition = 'center';
         document.body.style.backgroundRepeat = 'no-repeat';
         document.body.style.backgroundAttachment = 'fixed';
+        document.body.style.filter = filterCSS;
       } else {
         document.documentElement.style.setProperty('--page-bg-image', 'none');
         // Remove any existing background from body
@@ -421,6 +1005,7 @@
         document.body.style.backgroundPosition = '';
         document.body.style.backgroundRepeat = '';
         document.body.style.backgroundAttachment = '';
+        document.body.style.filter = '';
       }
     }
 
@@ -575,6 +1160,7 @@
         case 'inventory':
           menuHTML += `<li><a href="inventory.php"><img src="images/menu/compressed_chest.webp" alt="Inventory"> Inventory & Equipment</a></li>`;
           break;
+
         case 'pets':
           menuHTML += `
         <li>
@@ -1056,7 +1642,10 @@
         flex-shrink: 0;
         overflow-y: auto;
         position: fixed;
-        height: calc(100vh - 74px);
+        top: 55px;
+        left: 0;
+        height: calc(100vh - 55px);
+        z-index: 1000;
       }
 
       .sidebar-header {
@@ -2796,22 +3385,6 @@
             </div>
           </div>
 
-                <!-- Loot Card Border Section -->
-          <div class="settings-section">
-                  <div class="settings-section-header" onclick="toggleSection(this)">
-                    <h3>💎 Loot Card Border</h3>
-                    <span class="expand-icon">+</span>
-                </div>
-                  <div class="settings-section-content">
-                    <p class="section-description">Choose border colors for your loot cards and reward displays.</p>
-                    <div class="color-input-group">
-                      <input type="color" id="loot-card-custom-color" value="#f38ba8">
-                      <label>Custom Color</label>
-                </div>
-            </div>
-          </div>
-
-
           <div class="settings-section">
             <h3>🐉 Monster Backgrounds</h3>
               <div style="margin: 15px 0;">
@@ -2883,27 +3456,45 @@
 
 
           <div class="settings-section">
-              <h3>✨ Loot Card Highlighting</h3>
-            <p style="color: #a6adc8; font-size: 12px; margin-bottom: 15px;">
-                Customize the colors for loot card highlighting when damage requirements are met.
-            </p>
-            <div style="margin: 15px 0;">
-              <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-top: 15px;">
-                <div>
-                    <label style="color: #f9e2af; margin-bottom: 10px; display: block;">Background Color:</label>
-                  <div style="margin-top: 10px;">
-                      <input type="color" id="loot-highlighting-bg-color" value="#00ff1e" 
-                           style="width: 50px; height: 30px; border: none; border-radius: 4px; cursor: pointer;">
-                      <span style="color: #cdd6f4; margin-left: 10px;">Background Color</span>
-                  </div>
+            <div class="settings-section-header" onclick="toggleSection(this)">
+              <h3>💎 Loot Card Customization</h3>
+              <span class="expand-icon">+</span>
+            </div>
+            <div class="settings-section-content">
+              <p style="color: #a6adc8; font-size: 12px; margin-bottom: 15px;">
+                Customize loot card borders and highlighting when damage requirements are met.
+              </p>
+              
+              <!-- Border Color Section -->
+              <div style="margin: 15px 0;">
+                <h4 style="color: #f9e2af; margin-bottom: 15px;">🎨 Border Colors</h4>
+                <div class="color-input-group">
+                  <input type="color" id="loot-card-custom-color" value="#f38ba8" 
+                         style="width: 50px; height: 30px; border: none; border-radius: 4px; cursor: pointer;">
+                  <label style="color: #cdd6f4; margin-left: 10px;">Custom Border Color</label>
                 </div>
-                
-                <div>
+              </div>
+              
+              <!-- Highlighting Section -->
+              <div style="margin: 15px 0;">
+                <h4 style="color: #f9e2af; margin-bottom: 15px;">✨ Highlighting Effects</h4>
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-top: 15px;">
+                  <div>
+                    <label style="color: #f9e2af; margin-bottom: 10px; display: block;">Background Color:</label>
+                    <div style="margin-top: 10px;">
+                      <input type="color" id="loot-highlighting-bg-color" value="#00ff1e" 
+                             style="width: 50px; height: 30px; border: none; border-radius: 4px; cursor: pointer;">
+                      <span style="color: #cdd6f4; margin-left: 10px;">Background Color</span>
+                    </div>
+                  </div>
+                  
+                  <div>
                     <label style="color: #f9e2af; margin-bottom: 10px; display: block;">Glow Color:</label>
-                  <div style="margin-top: 10px;">
+                    <div style="margin-top: 10px;">
                       <input type="color" id="loot-highlighting-glow-color" value="#ffd700" 
-                           style="width: 50px; height: 30px; border: none; border-radius: 4px; cursor: pointer;">
+                             style="width: 50px; height: 30px; border: none; border-radius: 4px; cursor: pointer;">
                       <span style="color: #cdd6f4; margin-left: 10px;">Glow Effect Color</span>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -2911,81 +3502,34 @@
           </div>
 
             <div class="settings-section">
-              <h3>🖼️ Custom Backgrounds</h3>
-              <p style="color: #a6adc8; font-size: 12px; margin-bottom: 15px;">
-                Upload custom backgrounds for any page. 
-              </p>
+              <div class="settings-section-header" onclick="toggleSection(this)">
+                <h3>🖼️ Custom Backgrounds</h3>
+                <span class="expand-icon">+</span>
+              </div>
+              <div class="settings-section-content">
+                <p style="color: #a6adc8; font-size: 12px; margin-bottom: 15px;">
+                  Upload custom backgrounds for any page. 
+                </p>
               <div style="margin: 15px 0;">
                 <label style="display: flex; align-items: center; gap: 10px; color: #cdd6f4; margin-bottom: 15px;">
                   <input type="checkbox" id="custom-backgrounds-enabled" class="cyberpunk-checkbox">
                   <span>Enable custom backgrounds</span>
                 </label>
-                
-                <div style="margin: 15px 0;">
-                  <label style="color: #f9e2af; margin-bottom: 10px; display: block;">Page Selection:</label>
-                  <select id="custom-bg-page-select" style="width: 200px; padding: 8px; border-radius: 4px; background: #313244; color: #cdd6f4; border: 1px solid #45475a;">
-                    <option value="">Select a page...</option>
-                    <option value="/pets.php">Pets & Eggs</option>
-                    <option value="/inventory.php">Inventory & Equipment</option>
-                    <option value="/merchant.php">Merchant</option>
-                    <option value="/blacksmith.php">Blacksmith</option>
-                    <option value="/stats.php">Stats</option>
-                    <option value="/pvp.php">PvP Arena</option>
-                    <option value="/game_dash.php">Dashboard</option>
-                    <option value="/chat.php">Global Chat</option>
-                    <option value="/achievements.php">Achievements</option>
-                    <option value="/collections.php">Collections</option>
-                    <option value="/guide.php">How To Play</option>
-                    <option value="/leaderboard.php">Weekly Leaderboard</option>
-                    <option value="/patches.php">Patch Notes</option>
-                    <option value="/manga.php">Manga-Manhwa-Manhua</option>
-                    <option value="custom">Custom Page (Type below)</option>
-                  </select>
-                  
-                  <div style="margin-top: 10px;">
-                    <input type="text" id="custom-bg-page-input" placeholder="Enter page path (e.g., /battle.php)" 
-                          style="width: 300px; padding: 8px; border-radius: 4px; background: #313244; color: #cdd6f4; border: 1px solid #45475a;">
+
+                <div id="custom-backgrounds-container" style="margin-top: 20px;">
+                  <h4 style="color: #f9e2af; margin-bottom: 15px;">Custom Background URLs</h4>
+                  <div id="custom-bg-inputs">
+                    <!-- Custom background inputs will be populated here -->
                   </div>
-                </div>
-                
-                <div style="margin: 15px 0;">
-                  <label style="color: #f9e2af; margin-bottom: 10px; display: block;">Background Image URL:</label>
-                  <input type="url" id="custom-bg-url" placeholder="https://example.com/image.jpg" 
-                        style="width: 400px; padding: 8px; border-radius: 4px; background: #313244; color: #cdd6f4; border: 1px solid #45475a;">
-                  <button type="button" id="add-custom-bg" class="settings-button" style="background: #89b4fa; margin-left: 10px;">
-                    ➕ Add Background
+                  <button type="button" id="add-custom-bg" class="settings-button" style="background: #89b4fa; margin-top: 10px;">
+                    ➕ Add Custom Background
                   </button>
                 </div>
-                
-                <div id="custom-bg-list" style="margin-top: 20px;">
-                  <!-- Custom backgrounds will be listed here -->
+              </div>
               </div>
             </div>
-          </div>
 
-          <div class="settings-section">
-            <h3>🌊 Wave Auto-Refresh</h3>
-            <p style="color: #a6adc8; font-size: 12px; margin-bottom: 15px;">
-                Automatically refresh wave pages.
-            </p>
-            <div style="margin: 15px 0;">
-              <label style="display: flex; align-items: center; gap: 10px; color: #cdd6f4; margin-bottom: 15px;">
-                  <input type="checkbox" id="wave-auto-refresh-enabled" class="cyberpunk-checkbox">
-                <span>Enable wave page auto-refresh</span>
-              </label>
-              
-              <div style="margin: 15px 0;">
-                <label style="color: #f9e2af; margin-bottom: 10px; display: block;">Refresh Interval:</label>
-                <select id="wave-refresh-interval" style="width: 200px; padding: 8px; background: #1e1e2e; color: #cdd6f4; border: 1px solid #45475a; border-radius: 4px; margin-bottom: 15px;">
-                  <option value="5">5 seconds</option>
-                  <option value="10" selected>10 seconds</option>
-                  <option value="15">15 seconds</option>
-                  <option value="30">30 seconds</option>
-                  <option value="60">1 minute</option>
-                </select>
-              </div>
-            </div>
-          </div>
+
 
           <!-- PvP Battle Features Section -->
           <div class="settings-section">
@@ -3093,17 +3637,74 @@
             </div>
           </div>
 
+          <!-- Equipment Sets Configuration Section -->
           <div class="settings-section">
-            <h3 style="color: #f9e2af; margin-bottom: 15px;">📌 Pinned Items</h3>
-            <div style="margin: 15px 0;">
-              <div style="display: flex; align-items: center; gap: 10px; color: #cdd6f4;">
-                <label for="pinned-items-limit">Maximum pinned items:</label>
-                <input type="number" id="pinned-items-limit" min="1" max="10" value="3" 
-                       style="width: 60px; padding: 5px; background: #1e1e2e; color: #cdd6f4; border: 1px solid #45475a; border-radius: 4px;">
+            <div class="settings-section-header">
+              <h3>⚡ Equipment Sets</h3>
+              <span class="expand-icon">–</span>
+            </div>
+            <div class="settings-section-content expanded">
+              <p style="color: #a6adc8; font-size: 12px; margin-bottom: 15px;">
+                Equipment Sets are always enabled. Configure application delay between equipment changes.
+              </p>
+              <div style="margin: 15px 0;">
+                <label style="color: #f9e2af; margin-bottom: 10px; display: block;">Apply Delay (ms):</label>
+                <input type="number" id="equip-sets-delay" min="100" max="2000" step="50" value="350" 
+                       style="width: 120px; padding: 8px; background: #1e1e2e; color: #cdd6f4; border: 1px solid #45475a; border-radius: 4px;">
+                <small style="color: #6c7086; margin-left: 10px;">Delay between equipment changes</small>
               </div>
             </div>
           </div>
 
+          <!-- Wave Auto-Refresh Section -->
+          <div class="settings-section">
+            <div class="settings-section-header" onclick="toggleSection(this)">
+              <h3>🌊 Wave Auto-Refresh Settings</h3>
+              <span class="expand-icon">+</span>
+            </div>
+            <div class="settings-section-content">
+              <p style="color: #a6adc8; font-size: 12px; margin-bottom: 20px;">
+                Configure how often wave pages automatically refresh. Toggle on/off in the wave page filters.
+              </p>
+              
+              <div style="background: rgba(49, 50, 68, 0.3); padding: 20px; border-radius: 8px; border-left: 3px solid #89b4fa;">
+                <h4 style="color: #89b4fa; margin: 0 0 15px 0; font-size: 14px;">⏱️ Refresh Timing</h4>
+                
+                <div style="display: flex; flex-direction: column; gap: 15px;">
+                  <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
+                    <label style="color: #f9e2af; font-weight: 500; min-width: 120px;">Refresh Every:</label>
+                    <input type="number" 
+                           id="wave-refresh-time" 
+                           min="5" 
+                           max="600" 
+                           placeholder="10"
+                           style="width: 100px; padding: 8px 12px; background: #1e1e2e; color: #cdd6f4; border: 1px solid #45475a; border-radius: 6px; text-align: center; font-size: 14px;">
+                    <select id="wave-refresh-unit" 
+                            style="padding: 8px 12px; background: #1e1e2e; color: #cdd6f4; border: 1px solid #45475a; border-radius: 6px; font-size: 14px;">
+                      <option value="seconds">seconds</option>
+                      <option value="minutes">minutes</option>
+                    </select>
+                  </div>
+                  
+                  <div style="background: rgba(26, 27, 38, 0.5); padding: 12px; border-radius: 6px; border: 1px solid #45475a;">
+                    <p style="color: #a6adc8; font-size: 12px; margin: 0; line-height: 1.4;">
+                      <strong style="color: #f9e2af;">💡 Quick Setup:</strong><br>
+                      • <strong>5-15 seconds:</strong> Fast refresh for active monitoring<br>
+                      • <strong>30-60 seconds:</strong> Balanced for regular checking<br>
+                      • <strong>2-5 minutes:</strong> Light refresh for background monitoring<br>
+                      • <strong>Range:</strong> 5 seconds to 10 minutes maximum
+                    </p>
+                  </div>
+                  
+                  <div style="padding: 12px; background: rgba(137, 180, 250, 0.1); border: 1px solid rgba(137, 180, 250, 0.3); border-radius: 6px;">
+                    <p style="color: #89b4fa; font-size: 12px; margin: 0; font-weight: 500;">
+                      🔄 Toggle auto-refresh on/off directly in the wave page filter area
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
 
           <div style="text-align: center; margin-top: 30px;">
             <button class="settings-button" data-action="close">Close</button>
@@ -3136,10 +3737,10 @@
       setupMonsterBackgroundControls();
         setupLootHighlightingSettings();
         setupCustomBackgroundSettings();
-      setupWaveAutoRefreshSettings();
       setupPvPAutoSurrenderSettings();
+      setupNewWaveAutoRefreshSettings();
       setupGateGraktharSettings();
-      setupPinnedItemsLimitSettings();
+      setupEquipSetsSettings();
       setupMenuCustomizationListeners();
         
         // Initialize all cyberpunk checkboxes
@@ -3187,15 +3788,7 @@
       });
       }
 
-    // Loot card border color picker
-      const lootCardColorInput = document.getElementById('loot-card-custom-color');
-      if (lootCardColorInput) {
-        lootCardColorInput.addEventListener('change', () => {
-          extensionSettings.lootCardBorderColor = lootCardColorInput.value;
-        saveSettings();
-        applySettings();
-      });
-      }
+    // Loot card border color picker - removed duplicate, handled below
 
     // Custom color pickers
     const monsterImageCustomColor = document.getElementById('monster-image-custom-color');
@@ -3253,18 +3846,18 @@
           { id: 'gate_grakthar', name: 'Gate Grakthar', visible: true, order: 3 },
           { id: 'inventory', name: 'Inventory & Equipment', visible: true, order: 4 },
           { id: 'pets', name: 'Pets & Eggs', visible: true, order: 5 },
-          { id: 'stats', name: 'Stats', visible: true, order: 6 },
-          { id: 'blacksmith', name: 'Blacksmith', visible: true, order: 7 },
-          { id: 'merchant', name: 'Merchant', visible: true, order: 8 },
-          { id: 'inventory_quick', name: 'Inventory Quick Access', visible: true, order: 9 },
-          { id: 'achievements', name: 'Achievements', visible: true, order: 10 },
-          { id: 'collections', name: 'Collections', visible: true, order: 11 },
-          { id: 'guide', name: 'How To Play', visible: true, order: 12 },
-          { id: 'leaderboard', name: 'Weekly Leaderboard', visible: true, order: 13 },
-          { id: 'chat', name: 'Global Chat', visible: true, order: 14 },
-          { id: 'patches', name: 'Patch Notes', visible: true, order: 15 },
-          { id: 'manga', name: 'Manga-Manhwa-Manhua', visible: true, order: 16 },
-          { id: 'settings', name: 'Settings', visible: true, order: 17 }
+          { id: 'stats', name: 'Stats', visible: true, order: 7 },
+          { id: 'blacksmith', name: 'Blacksmith', visible: true, order: 8 },
+          { id: 'merchant', name: 'Merchant', visible: true, order: 9 },
+          { id: 'inventory_quick', name: 'Inventory Quick Access', visible: true, order: 10 },
+          { id: 'achievements', name: 'Achievements', visible: true, order: 11 },
+          { id: 'collections', name: 'Collections', visible: true, order: 12 },
+          { id: 'guide', name: 'How To Play', visible: true, order: 13 },
+          { id: 'leaderboard', name: 'Weekly Leaderboard', visible: true, order: 14 },
+          { id: 'chat', name: 'Global Chat', visible: true, order: 15 },
+          { id: 'patches', name: 'Patch Notes', visible: true, order: 16 },
+          { id: 'manga', name: 'Manga-Manhwa-Manhua', visible: true, order: 17 },
+          { id: 'settings', name: 'Settings', visible: true, order: 18 }
         ];
         
         saveSettings();
@@ -3502,11 +4095,6 @@
 
     function setupCustomBackgroundSettings() {
       const enabledCheckbox = document.getElementById('custom-backgrounds-enabled');
-      const pageSelect = document.getElementById('custom-bg-page-select');
-      const pageInput = document.getElementById('custom-bg-page-input');
-      const urlInput = document.getElementById('custom-bg-url');
-      const addButton = document.getElementById('add-custom-bg');
-      const bgList = document.getElementById('custom-bg-list');
       
       if (enabledCheckbox) {
         // Force the checkbox to the correct state
@@ -3535,102 +4123,120 @@
         saveSettings();
         applyCustomBackgrounds();
       }
+
+      // Populate existing custom backgrounds
+      populateCustomBgInputs();
       
-      // Handle page selection
-      if (pageSelect) {
-        pageSelect.addEventListener('change', (e) => {
-          if (e.target.value === 'custom') {
-            pageInput.style.display = 'block';
-            pageInput.focus();
-          } else {
-            pageInput.style.display = 'none';
-            pageInput.value = '';
-          }
-        });
-      }
-      
-      // Handle adding custom background
-      if (addButton) {
-        addButton.addEventListener('click', () => {
-          const selectedPage = pageSelect.value;
-          const customPage = pageInput.value.trim();
-          const url = urlInput.value.trim();
-          
-          if (!url) {
-            alert('Please enter a background image URL');
-            return;
-          }
-          
-          const targetPage = selectedPage === 'custom' ? customPage : selectedPage;
-          if (!targetPage) {
-            alert('Please select a page or enter a custom page path');
-            return;
-          }
-          
-          // Add the background
-          extensionSettings.customBackgrounds.backgrounds[targetPage] = url;
-          saveSettings();
-          applyCustomBackgrounds();
-          populateCustomBackgroundList();
-          
-          // Clear inputs
-          pageSelect.value = '';
-          pageInput.value = '';
-          urlInput.value = '';
-          pageInput.style.display = 'none';
-        });
-      }
-      
-      // Populate the background list
-      populateCustomBackgroundList();
+      // Use event delegation for the add button and remove buttons
+      document.addEventListener('click', (e) => {
+        if (e.target && e.target.id === 'add-custom-bg') {
+          e.preventDefault();
+          addCustomBgInput();
+        } else if (e.target && e.target.getAttribute('data-action') === 'remove-custom-bg') {
+          e.preventDefault();
+          removeCustomBgInput(e.target);
+        }
+      });
     }
 
-    function populateCustomBackgroundList() {
-      const bgList = document.getElementById('custom-bg-list');
-      if (!bgList) return;
+    function populateCustomBgInputs() {
+      const container = document.getElementById('custom-bg-inputs');
+      if (!container) return;
       
-      bgList.innerHTML = '';
+      container.innerHTML = '';
       
-      Object.entries(extensionSettings.customBackgrounds.backgrounds).forEach(([page, url]) => {
-        const bgItem = document.createElement('div');
-        bgItem.style.cssText = `
-          display: flex;
-          align-items: center;
-          justify-content: space-between;
-          padding: 10px;
-          margin: 5px 0;
-          background: #313244;
-          border-radius: 4px;
-          border: 1px solid #45475a;
-        `;
-        
-        bgItem.innerHTML = `
-          <div>
-            <div style="color: #f9e2af; font-weight: bold;">${page}</div>
-            <div style="color: #a6adc8; font-size: 12px; word-break: break-all;">${url}</div>
-          </div>
-          <button type="button" class="remove-custom-bg" data-page="${page}" 
-                  style="background: #f38ba8; color: white; border: none; padding: 5px 10px; border-radius: 4px; cursor: pointer;">
-            🗑️ Remove
-          </button>
-        `;
-        
-        bgList.appendChild(bgItem);
+      // Ensure backgrounds object exists
+      if (!extensionSettings.customBackgrounds.backgrounds) {
+        extensionSettings.customBackgrounds.backgrounds = {};
+      }
+      
+      Object.entries(extensionSettings.customBackgrounds.backgrounds).forEach(([page, bgData], index) => {
+        // Handle both old format (string URL) and new format (object with url and effect)
+        const url = typeof bgData === 'string' ? bgData : bgData.url;
+        const effect = typeof bgData === 'string' ? 'normal' : bgData.effect;
+        addCustomBgInput(page, url, index, effect);
       });
-      
-      // Add event listeners for remove buttons
-      bgList.querySelectorAll('.remove-custom-bg').forEach(button => {
-        button.addEventListener('click', (e) => {
-          const page = e.target.getAttribute('data-page');
-          delete extensionSettings.customBackgrounds.backgrounds[page];
-          saveSettings();
-          applyCustomBackgrounds();
-          populateCustomBackgroundList();
-        });
-      });
-  }
+    }
 
-  function setupLootColorSelectors() {
+    function addCustomBgInput(page = '', url = '', index = null, effect = 'normal') {
+      const container = document.getElementById('custom-bg-inputs');
+      if (!container) {
+        return;
+      }
+      
+      const inputIndex = index !== null ? index : Object.keys(extensionSettings.customBackgrounds.backgrounds).length;
+      
+      const inputDiv = document.createElement('div');
+      inputDiv.style.cssText = 'display: flex; gap: 8px; margin-bottom: 10px; align-items: center;';
+      inputDiv.innerHTML = `
+        <input type="text" placeholder="Page Path (e.g., /battle.php)" 
+               value="${page}" 
+               style="width: 150px; padding: 6px; background: #1e1e2e; color: #cdd6f4; border: 1px solid #45475a; border-radius: 4px; font-size: 12px;"
+               class="custom-bg-page-input">
+        <input type="url" placeholder="Image URL" 
+               value="${url}" 
+               style="width: 200px; padding: 6px; background: #1e1e2e; color: #cdd6f4; border: 1px solid #45475a; border-radius: 4px; font-size: 12px;"
+               class="custom-bg-url-input">
+        <select class="custom-bg-effect-select" style="width: 100px; padding: 6px; background: #1e1e2e; color: #cdd6f4; border: 1px solid #45475a; border-radius: 4px; font-size: 12px;">
+          <option value="normal" ${effect === 'normal' ? 'selected' : ''}>Normal</option>
+          <option value="gradient" ${effect === 'gradient' ? 'selected' : ''}>Gradient</option>
+          <option value="blur" ${effect === 'blur' ? 'selected' : ''}>Blur</option>
+          <option value="pattern" ${effect === 'pattern' ? 'selected' : ''}>Pattern</option>
+        </select>
+        <button class="settings-button" style="background: #f38ba8; padding: 6px 10px; font-size: 12px; min-width: 40px;" data-action="remove-custom-bg">
+          🗑️
+        </button>
+      `;
+      
+      container.appendChild(inputDiv);
+      
+      // Add input event listeners for real-time updates
+      const pageInput = inputDiv.querySelector('.custom-bg-page-input');
+      const urlInput = inputDiv.querySelector('.custom-bg-url-input');
+      const effectSelect = inputDiv.querySelector('.custom-bg-effect-select');
+      
+      function updateCustomBackground() {
+        const oldPage = page;
+        const newPage = pageInput.value.trim();
+        const newUrl = urlInput.value.trim();
+        const newEffect = effectSelect.value;
+        
+        if (oldPage && oldPage !== newPage) {
+          delete extensionSettings.customBackgrounds.backgrounds[oldPage];
+        }
+        
+        if (newPage && newUrl) {
+          extensionSettings.customBackgrounds.backgrounds[newPage] = {
+            url: newUrl,
+            effect: newEffect
+          };
+          page = newPage;
+        }
+        
+        saveSettings();
+        applyCustomBackgrounds();
+      }
+      
+      pageInput.addEventListener('blur', updateCustomBackground);
+      urlInput.addEventListener('blur', updateCustomBackground);
+      effectSelect.addEventListener('change', updateCustomBackground);
+    }
+
+    function removeCustomBgInput(button) {
+      const inputDiv = button.closest('div');
+      const pageInput = inputDiv.querySelector('.custom-bg-page-input');
+      const page = pageInput.value.trim();
+      
+      if (page && extensionSettings.customBackgrounds.backgrounds[page]) {
+        delete extensionSettings.customBackgrounds.backgrounds[page];
+        saveSettings();
+        applyCustomBackgrounds();
+      }
+      
+      inputDiv.remove();
+    }
+
+    function setupLootColorSelectors() {
     // Unlocked colors
     document.querySelectorAll('#loot-unlocked-colors .color-option').forEach(option => {
       option.addEventListener('click', () => {
@@ -3674,38 +4280,7 @@
     });
   }
 
-  function setupWaveAutoRefreshSettings() {
-    const enabledCheckbox = document.getElementById('wave-auto-refresh-enabled');
-    const intervalSelect = document.getElementById('wave-refresh-interval');
-    
-    if (enabledCheckbox) {
-      enabledCheckbox.checked = extensionSettings.waveAutoRefresh.enabled;
-      enabledCheckbox.addEventListener('change', (e) => {
-        extensionSettings.waveAutoRefresh.enabled = e.target.checked;
-        saveSettings();
-        
-        if (e.target.checked) {
-          initWaveAutoRefresh();
-        } else {
-          stopWaveAutoRefresh();
-        }
-      });
-    }
-    
-    if (intervalSelect) {
-      intervalSelect.value = extensionSettings.waveAutoRefresh.interval;
-      intervalSelect.addEventListener('change', (e) => {
-        extensionSettings.waveAutoRefresh.interval = parseInt(e.target.value);
-        saveSettings();
-        
-        // Restart auto-refresh with new interval if it's currently running
-        if (extensionSettings.waveAutoRefresh.enabled) {
-          stopWaveAutoRefresh();
-          startWaveAutoRefresh();
-        }
-      });
-    }
-  }
+
 
   function setupPvPAutoSurrenderSettings() {
     // Battle Prediction Settings
@@ -3730,10 +4305,19 @@
     
     if (analyzeAfterSelect) {
       analyzeAfterSelect.value = extensionSettings.pvpBattlePrediction.analyzeAfterAttacks;
-      analyzeAfterSelect.addEventListener('change', (e) => {
-        extensionSettings.pvpBattlePrediction.analyzeAfterAttacks = parseInt(e.target.value);
-        saveSettings();
-      });
+      
+      // Remove existing listeners
+      analyzeAfterSelect.removeEventListener('change', handleAnalyzeAfterChange);
+      
+      // Add new listener
+      analyzeAfterSelect.addEventListener('change', handleAnalyzeAfterChange);
+    }
+    
+    function handleAnalyzeAfterChange(e) {
+      const newValue = parseInt(e.target.value);
+      extensionSettings.pvpBattlePrediction.analyzeAfterAttacks = newValue;
+      saveSettings();
+      console.log('PvP analyze after attacks changed to:', newValue);
     }
     
     if (surrenderEnabledCheckbox) {
@@ -3746,10 +4330,19 @@
     
     if (thresholdSelect) {
       thresholdSelect.value = extensionSettings.pvpAutoSurrender.surrenderThreshold;
-      thresholdSelect.addEventListener('change', (e) => {
-        extensionSettings.pvpAutoSurrender.surrenderThreshold = parseFloat(e.target.value);
-        saveSettings();
-      });
+      
+      // Remove existing listeners
+      thresholdSelect.removeEventListener('change', handleThresholdChange);
+      
+      // Add new listener  
+      thresholdSelect.addEventListener('change', handleThresholdChange);
+    }
+    
+    function handleThresholdChange(e) {
+      const newThreshold = parseFloat(e.target.value);
+      extensionSettings.pvpAutoSurrender.surrenderThreshold = newThreshold;
+      saveSettings();
+      console.log('PvP surrender threshold changed to:', newThreshold);
     }
   }
 
@@ -3764,6 +4357,153 @@
         // Regenerate sidebar to apply new wave setting
         generateSideBar();
         showNotification('Gate Grakthar wave updated!', 'success');
+      });
+    }
+  }
+
+  function setupNewWaveAutoRefreshSettings() {
+    const timeInput = document.getElementById('wave-refresh-time');
+    const unitSelect = document.getElementById('wave-refresh-unit');
+    
+    if (!timeInput || !unitSelect) {
+      console.log('Wave auto-refresh inputs not found');
+      return;
+    }
+    
+    console.log('Setting up new wave auto-refresh, current interval:', extensionSettings.waveAutoRefresh.interval, 'seconds');
+    
+    // Initialize display values based on current setting
+    initializeWaveRefreshDisplay();
+    
+    // Add event handlers
+    timeInput.addEventListener('input', handleWaveRefreshTimeChange);
+    timeInput.addEventListener('change', handleWaveRefreshTimeChange);
+    timeInput.addEventListener('blur', handleWaveRefreshTimeChange);
+    unitSelect.addEventListener('change', handleWaveRefreshUnitChange);
+    
+    function initializeWaveRefreshDisplay() {
+      const currentSeconds = extensionSettings.waveAutoRefresh.interval || 10;
+      
+      if (currentSeconds >= 60 && currentSeconds % 60 === 0) {
+        // Display in minutes if it's a whole minute value
+        timeInput.value = currentSeconds / 60;
+        unitSelect.value = 'minutes';
+      } else {
+        // Display in seconds
+        timeInput.value = currentSeconds;
+        unitSelect.value = 'seconds';
+      }
+      
+      console.log('Initialized wave refresh display:', timeInput.value, unitSelect.value);
+    }
+    
+    function handleWaveRefreshTimeChange() {
+      const time = parseInt(timeInput.value) || 10;
+      const unit = unitSelect.value;
+      let seconds;
+      
+      if (unit === 'minutes') {
+        // Convert minutes to seconds, limit 1-10 minutes
+        const minutes = Math.max(1, Math.min(10, time));
+        timeInput.value = minutes;
+        seconds = minutes * 60;
+      } else {
+        // Keep in seconds, limit 5-600 seconds
+        const secs = Math.max(5, Math.min(600, time));
+        timeInput.value = secs;
+        seconds = secs;
+      }
+      
+      // Update settings
+      extensionSettings.waveAutoRefresh.interval = seconds;
+      saveSettings();
+      
+      console.log('Wave refresh timing updated:', seconds, 'seconds');
+      
+      // Restart auto-refresh if currently running
+      if (extensionSettings.waveAutoRefresh.enabled) {
+        stopWaveAutoRefresh();
+        setTimeout(() => {
+          initWaveAutoRefresh();
+        }, 200);
+      }
+    }
+    
+    function handleWaveRefreshUnitChange() {
+      const currentTime = parseInt(timeInput.value) || 10;
+      const newUnit = unitSelect.value;
+      
+      if (newUnit === 'minutes') {
+        // Convert seconds to minutes
+        const minutes = Math.max(1, Math.min(10, Math.round(currentTime / 60) || 1));
+        timeInput.value = minutes;
+        timeInput.min = '1';
+        timeInput.max = '10';
+      } else {
+        // Convert minutes to seconds or keep seconds
+        const seconds = unitSelect.value === 'seconds' ? 
+          Math.max(5, Math.min(600, currentTime)) : 
+          Math.max(5, Math.min(600, currentTime * 60));
+        timeInput.value = seconds;
+        timeInput.min = '5';
+        timeInput.max = '600';
+      }
+      
+      // Trigger the change handler to save
+      handleWaveRefreshTimeChange();
+    }
+  }
+
+  function setupEquipSetsSettings() {
+    const enabledCheckbox = document.getElementById('equip-sets-enabled');
+    const delayInput = document.getElementById('equip-sets-delay');
+    const sidebarCheckbox = document.getElementById('equip-sets-sidebar');
+    
+    if (enabledCheckbox) {
+      enabledCheckbox.checked = extensionSettings.equipSets.enabled;
+      enabledCheckbox.addEventListener('change', (e) => {
+        extensionSettings.equipSets.enabled = e.target.checked;
+        saveSettings();
+        showNotification(`Equipment Sets ${e.target.checked ? 'enabled' : 'disabled'}!`, 'success');
+      });
+    }
+    
+    if (delayInput) {
+      delayInput.value = extensionSettings.equipSets.applyDelay;
+      delayInput.addEventListener('change', (e) => {
+        const value = parseInt(e.target.value);
+        if (value >= 100 && value <= 2000) {
+          extensionSettings.equipSets.applyDelay = value;
+          saveSettings();
+          showNotification('Equipment apply delay updated!', 'success');
+        }
+      });
+    }
+    
+    if (sidebarCheckbox) {
+      sidebarCheckbox.checked = extensionSettings.equipSets.showInSidebar;
+      sidebarCheckbox.addEventListener('change', (e) => {
+        extensionSettings.equipSets.showInSidebar = e.target.checked;
+        saveSettings();
+        // Regenerate sidebar to show/hide equip sets
+        generateSideBar();
+        showNotification(`Equipment Sets ${e.target.checked ? 'added to' : 'removed from'} sidebar!`, 'success');
+      });
+    }
+  }
+
+  function setupEquipSetsSettings() {
+    const delayInput = document.getElementById('equip-sets-delay');
+    
+    if (delayInput) {
+      delayInput.value = extensionSettings.equipSets.applyDelay;
+      delayInput.addEventListener('change', (e) => {
+        const delay = parseInt(e.target.value);
+        if (delay >= 100 && delay <= 2000) {
+          extensionSettings.equipSets.applyDelay = delay;
+          saveSettings();
+          showNotification('Equipment sets delay updated!', 'success');
+        }
       });
     }
   }
@@ -4703,35 +5443,7 @@
     });
   }
 
-  function calculateWinProbability() {
-    const myHpPercent = pvpBattleData.myCurrentHp / pvpBattleData.myMaxHp;
-    const enemyHpPercent = pvpBattleData.enemyCurrentHp / pvpBattleData.enemyMaxHp;
-    
-    const myAvgDamage = pvpBattleData.myDamageDealt / Math.max(1, pvpBattleData.attackCount);
-    const enemyAvgDamage = pvpBattleData.enemyDamageDealt / Math.max(1, pvpBattleData.attackCount);
-    
-    const myAttacksToWin = Math.ceil(pvpBattleData.enemyCurrentHp / myAvgDamage);
-    const enemyAttacksToWin = Math.ceil(pvpBattleData.myCurrentHp / enemyAvgDamage);
-    
-    let winProbability = 0.5;
-    
-    if (myAttacksToWin < enemyAttacksToWin) {
-      winProbability = 0.8;
-    } else if (enemyAttacksToWin < myAttacksToWin) {
-      winProbability = 0.2;
-    } else {
-      if (myHpPercent > enemyHpPercent) {
-        winProbability = 0.6;
-      } else if (enemyHpPercent > myHpPercent) {
-        winProbability = 0.4;
-      }
-    }
-    
-    const hpDifference = myHpPercent - enemyHpPercent;
-    winProbability += hpDifference * 0.3;
-    
-    return Math.max(0, Math.min(1, winProbability));
-  }
+
 
   function highlightPvpBattles() {
     const table = document.querySelector('.table');
@@ -4909,47 +5621,64 @@
       enemy: enemyAvgDamage.toFixed(1) 
     });
     
-    // If no damage data yet, use HP percentages only
-    if (myAvgDamage === 0 && enemyAvgDamage === 0) {
-      console.log('📊 No damage data yet, using HP percentages only');
-      const hpBasedProbability = myHpPercent >= enemyHpPercent ? 0.6 : 0.4;
-      console.log('🎯 HP-based probability:', (hpBasedProbability * 100).toFixed(1) + '%');
-      return hpBasedProbability;
-    }
+    // Start with base probability from HP ratio
+    let winProbability = 0.5;
     
-    // Estimate remaining attacks needed to win/lose
-    const myAttacksToWin = myAvgDamage > 0 ? Math.ceil(pvpBattleData.enemyCurrentHp / myAvgDamage) : Infinity;
-    const enemyAttacksToWin = enemyAvgDamage > 0 ? Math.ceil(pvpBattleData.myCurrentHp / enemyAvgDamage) : Infinity;
+    // HP-based calculation (30% weight)
+    const hpRatio = myHpPercent / Math.max(enemyHpPercent, 0.01); // Avoid division by zero
+    const hpScore = Math.min(Math.max((hpRatio - 1) * 0.3 + 0.5, 0.1), 0.9);
     
-    console.log('🏆 Attacks needed to win:', { 
-      myAttacksToWin: myAttacksToWin === Infinity ? 'Unknown' : myAttacksToWin, 
-      enemyAttacksToWin: enemyAttacksToWin === Infinity ? 'Unknown' : enemyAttacksToWin 
-    });
-    
-    // Calculate win probability based on who needs fewer attacks
-    let winProbability = 0.5; // Default to 50%
-    
-    if (myAttacksToWin < enemyAttacksToWin) {
-      // We need fewer attacks to win
-      winProbability = 0.8;
-    } else if (enemyAttacksToWin < myAttacksToWin) {
-      // Enemy needs fewer attacks to win
-      winProbability = 0.2;
-    } else {
-      // Equal attacks needed - consider HP percentage
-      if (myHpPercent > enemyHpPercent) {
-        winProbability = 0.6;
-      } else if (enemyHpPercent > myHpPercent) {
-        winProbability = 0.4;
+    // If we have damage data, use it (70% weight)
+    if (pvpBattleData.attackCount > 0 && (myAvgDamage > 0 || enemyAvgDamage > 0)) {
+      
+      // Damage efficiency calculation
+      const damageRatio = myAvgDamage / Math.max(enemyAvgDamage, 1);
+      const damageScore = Math.min(Math.max((damageRatio - 1) * 0.4 + 0.5, 0.05), 0.95);
+      
+      // Attacks needed calculation
+      const myAttacksToWin = myAvgDamage > 0 ? Math.ceil(pvpBattleData.enemyCurrentHp / myAvgDamage) : 999;
+      const enemyAttacksToWin = enemyAvgDamage > 0 ? Math.ceil(pvpBattleData.myCurrentHp / enemyAvgDamage) : 999;
+      
+      let attacksScore = 0.5;
+      if (myAttacksToWin !== enemyAttacksToWin) {
+        const attackDiff = enemyAttacksToWin - myAttacksToWin;
+        attacksScore = Math.min(Math.max(0.5 + (attackDiff * 0.1), 0.1), 0.9);
       }
+      
+      // Combine damage-based factors (70% weight) with HP (30% weight)
+      winProbability = (damageScore * 0.4 + attacksScore * 0.3) * 0.7 + hpScore * 0.3;
+      
+      console.log('📊 Detailed calculation:', {
+        hpScore: (hpScore * 100).toFixed(1) + '%',
+        damageScore: (damageScore * 100).toFixed(1) + '%', 
+        attacksScore: (attacksScore * 100).toFixed(1) + '%',
+        myAttacksToWin,
+        enemyAttacksToWin
+      });
+    } else {
+      // No damage data yet - use enhanced HP-based calculation
+      const hpDifference = myHpPercent - enemyHpPercent;
+      
+      // More granular HP-based probability
+      if (Math.abs(hpDifference) < 0.05) {
+        // Very close HP - use 50% baseline
+        winProbability = 0.5;
+      } else {
+        // Use HP difference with more sensitivity
+        winProbability = 0.5 + (hpDifference * 0.8);
+      }
+      
+      console.log('📊 HP-only calculation:', {
+        hpDifference: (hpDifference * 100).toFixed(1) + '%',
+        baseProbability: (winProbability * 100).toFixed(1) + '%'
+      });
     }
     
-    // Adjust based on HP percentage difference
-    const hpDifference = myHpPercent - enemyHpPercent;
-    winProbability += hpDifference * 0.3;
+    // Ensure result is between 5% and 95% for realistic ranges
+    winProbability = Math.max(0.05, Math.min(0.95, winProbability));
     
-    // Clamp between 0 and 1
-    return Math.max(0, Math.min(1, winProbability));
+    console.log('🎯 Final win probability:', (winProbability * 100).toFixed(1) + '%');
+    return winProbability;
   }
 
 
@@ -5010,7 +5739,7 @@
         
         if (isWin) {
           // Winner gets +15 (attacker) or +5 (defender)
-          points = isAttacker ? '+15' : '+5';
+          points = isAttacker ? '+10' : '+5';
         } else {
           // Loser gets -15 (attacker) or -5 (defender)
           points = isAttacker ? '-15' : '-5';
@@ -5059,19 +5788,7 @@
     }
   }
 
-  function setupPinnedItemsLimitSettings() {
-    const limitInput = document.getElementById('pinned-items-limit');
-    
-    if (limitInput) {
-      limitInput.value = extensionSettings.pinnedItemsLimit;
-      limitInput.addEventListener('change', (e) => {
-        const value = Math.max(1, Math.min(10, parseInt(e.target.value) || 3));
-        extensionSettings.pinnedItemsLimit = value;
-        e.target.value = value;
-        saveSettings();
-      });
-    }
-  }
+
 
   function addBattleHideImagesToggle() {
     
@@ -5484,18 +6201,18 @@
       { id: 'gate_grakthar', name: 'Gate Grakthar', visible: true, order: 3 },
       { id: 'inventory', name: 'Inventory & Equipment', visible: true, order: 4 },
       { id: 'pets', name: 'Pets & Eggs', visible: true, order: 5 },
-      { id: 'stats', name: 'Stats', visible: true, order: 6 },
-      { id: 'blacksmith', name: 'Blacksmith', visible: true, order: 7 },
-      { id: 'merchant', name: 'Merchant', visible: true, order: 8 },
-      { id: 'inventory_quick', name: 'Inventory Quick Access', visible: true, order: 9 },
-      { id: 'achievements', name: 'Achievements', visible: true, order: 10 },
-      { id: 'collections', name: 'Collections', visible: true, order: 11 },
-      { id: 'guide', name: 'How To Play', visible: true, order: 12 },
-      { id: 'leaderboard', name: 'Weekly Leaderboard', visible: true, order: 13 },
-      { id: 'chat', name: 'Global Chat', visible: true, order: 14 },
-      { id: 'patches', name: 'Patch Notes', visible: true, order: 15 },
-      { id: 'manga', name: 'Manga-Manhwa-Manhua', visible: true, order: 16 },
-      { id: 'settings', name: 'Settings', visible: true, order: 17 }
+      { id: 'stats', name: 'Stats', visible: true, order: 7 },
+      { id: 'blacksmith', name: 'Blacksmith', visible: true, order: 8 },
+      { id: 'merchant', name: 'Merchant', visible: true, order: 9 },
+      { id: 'inventory_quick', name: 'Inventory Quick Access', visible: true, order: 10 },
+      { id: 'achievements', name: 'Achievements', visible: true, order: 11 },
+      { id: 'collections', name: 'Collections', visible: true, order: 12 },
+      { id: 'guide', name: 'How To Play', visible: true, order: 13 },
+      { id: 'leaderboard', name: 'Weekly Leaderboard', visible: true, order: 14 },
+      { id: 'chat', name: 'Global Chat', visible: true, order: 15 },
+      { id: 'patches', name: 'Patch Notes', visible: true, order: 16 },
+      { id: 'manga', name: 'Manga-Manhwa-Manhua', visible: true, order: 17 },
+      { id: 'settings', name: 'Settings', visible: true, order: 18 }
     ];
     
     saveSettings();
@@ -5552,8 +6269,14 @@
       pinnedInventoryItems: [],
       multiplePotsEnabled: false,
       multiplePotsCount: 3,
-      pinnedItemsLimit: 3,
-      gateGraktharWave: 3
+      pinnedItemsLimit: 10,
+      gateGraktharWave: 3,
+      equipSets: {
+        enabled: true,
+        storageKey: 'demonGameEquipSets',
+        applyDelay: 350,
+        showInSidebar: true
+      }
     };
     saveSettings();
     applySettings();
@@ -5586,8 +6309,14 @@
         pinnedInventoryItems: [],
         multiplePotsEnabled: false,
         multiplePotsCount: 3,
-        pinnedItemsLimit: 3,
-        gateGraktharWave: 3
+        pinnedItemsLimit: 10,
+        gateGraktharWave: 3,
+        equipSets: {
+          enabled: true,
+          storageKey: 'demonGameEquipSets',
+          applyDelay: 350,
+          showInSidebar: true
+        }
       };
       
       // Apply default settings
@@ -6415,6 +7144,11 @@
           <input type="checkbox" id="hide-img-monsters" class="cyberpunk-checkbox">
         Hide images
       </label>
+      
+      <label style="display: flex; align-items: center; gap: 5px; color: #cdd6f4;">
+          <input type="checkbox" id="wave-auto-refresh-toggle" class="cyberpunk-checkbox" ${extensionSettings.waveAutoRefresh.enabled ? 'checked' : ''}>
+        🔄 Auto-refresh
+      </label>
         
       <label style="display: flex; align-items: center; gap: 5px; color: #cdd6f4;">
           <input type="checkbox" id="battle-limit-alarm" class="cyberpunk-checkbox">
@@ -6447,6 +7181,26 @@
     document.getElementById('hp-filter').addEventListener('change', applyMonsterFilters);
     document.getElementById('player-count-filter').addEventListener('change', applyMonsterFilters);
     document.getElementById('hide-img-monsters').addEventListener('change', applyMonsterFilters);
+    
+    // Wave auto-refresh toggle handler
+    const waveAutoRefreshToggle = document.getElementById('wave-auto-refresh-toggle');
+    if (waveAutoRefreshToggle) {
+      waveAutoRefreshToggle.addEventListener('change', function() {
+        extensionSettings.waveAutoRefresh.enabled = this.checked;
+        saveSettings();
+        
+        if (this.checked) {
+          initWaveAutoRefresh();
+          showNotification('Wave auto-refresh enabled', 'success');
+        } else {
+          stopWaveAutoRefresh();
+          showNotification('Wave auto-refresh disabled', 'success');
+        }
+        
+        console.log('Wave auto refresh toggled:', this.checked);
+      });
+    }
+    
     document.getElementById('battle-limit-alarm').addEventListener('change', (e) => {
       const soundCheckbox = document.getElementById('battle-limit-alarm-sound');
       if (e.target.checked) {
@@ -8009,10 +8763,16 @@
     applyMonsterBackgrounds()
     applyLootPanelColors()
     
+    // Initialize leaderboard highlighting
+    setTimeout(() => {
+      highlightCurrentUserInLeaderboard();
+    }, 1000);
+    
     // Set up observer for panel changes
     const observer = new MutationObserver(() => {
       applyMonsterBackgrounds();
       applyLootPanelColors();
+      highlightCurrentUserInLeaderboard();
     });
     
     // Observe the container that holds panels
@@ -8041,6 +8801,7 @@
     addInventoryQuickAccessButtons()
     createBackToDashboardButton()
     removeOriginalBackButton()
+    initializeEquipmentSets()
       applyCustomBackgrounds()
   }
 
@@ -8312,6 +9073,125 @@
 
   function initEventMods(){
     initRankingSideBySide()
+  }
+
+  function initLeaderboardMods() {
+    console.log('Initializing leaderboard user highlighting...');
+    
+    // Wait a moment for the page to load completely
+    setTimeout(() => {
+      highlightCurrentUserInLeaderboard();
+    }, 500);
+    
+    // Also set up a mutation observer to catch dynamic updates
+    const observer = new MutationObserver((mutations) => {
+      let shouldHighlight = false;
+      mutations.forEach((mutation) => {
+        if (mutation.type === 'childList' && mutation.addedNodes.length > 0) {
+          shouldHighlight = true;
+        }
+      });
+      if (shouldHighlight) {
+        highlightCurrentUserInLeaderboard();
+      }
+    });
+    
+    // Observe the main content area for changes
+    const mainContent = document.querySelector('.container-fluid') || document.body;
+    if (mainContent) {
+      observer.observe(mainContent, { 
+        childList: true, 
+        subtree: true 
+      });
+    }
+  }
+
+  function highlightCurrentUserInLeaderboard() {
+    if (!userId) {
+      console.log('No user ID found for leaderboard highlighting');
+      return;
+    }
+    
+    let highlightedCount = 0;
+    
+    // Method 1: Target specific leaderboard rows (.lb-row) - like the existing colorMyself function
+    document.querySelectorAll('.lb-row a').forEach(link => {
+      if (link.href && link.href.includes(`pid=${userId}`)) {
+        const lbRow = link.closest('.lb-row');
+        if (lbRow && !lbRow.classList.contains('current-user-highlight')) {
+          lbRow.classList.add('current-user-highlight');
+          
+          // Apply subtle highlighting (not aggressive like before)
+          lbRow.style.cssText += `
+            background: linear-gradient(135deg, rgba(203, 166, 247, 0.2) 0%, rgba(137, 180, 250, 0.2) 100%) !important;
+            border-left: 4px solid #f9e2af !important;
+            border-radius: 6px !important;
+            box-shadow: 0 2px 8px rgba(203, 166, 247, 0.1) !important;
+            animation: userHighlightPulse 3s ease-in-out infinite alternate !important;
+          `;
+          
+          // Add crown indicator to the name
+          const nameSpan = lbRow.querySelector('.lb-name');
+          if (nameSpan && !nameSpan.querySelector('.user-indicator')) {
+            const indicator = document.createElement('span');
+            indicator.className = 'user-indicator';
+            indicator.innerHTML = ' 👑';
+            indicator.style.cssText = `
+              color: #f9e2af !important;
+              font-weight: bold !important;
+            `;
+            nameSpan.appendChild(indicator);
+          }
+          
+          highlightedCount++;
+        }
+      }
+    });
+    
+    // Method 2: Target weekly leaderboard tables (tr elements)
+    document.querySelectorAll('table tr').forEach(row => {
+      const links = row.querySelectorAll('a');
+      links.forEach(link => {
+        if (link.href && link.href.includes(`pid=${userId}`)) {
+          if (!row.classList.contains('current-user-highlight')) {
+            row.classList.add('current-user-highlight');
+            
+            row.style.cssText += `
+              background: linear-gradient(135deg, rgba(203, 166, 247, 0.2) 0%, rgba(137, 180, 250, 0.2) 100%) !important;
+              border-left: 4px solid #f9e2af !important;
+              border-radius: 4px !important;
+            `;
+            
+            highlightedCount++;
+          }
+        }
+      });
+    });
+    
+    if (highlightedCount > 0) {
+      console.log(`Highlighted ${highlightedCount} leaderboard entries for user ${userId}`);
+    }
+    
+    // Add CSS animation if not already present
+    if (!document.getElementById('leaderboard-highlight-styles')) {
+      const style = document.createElement('style');
+      style.id = 'leaderboard-highlight-styles';
+      style.textContent = `
+        @keyframes userHighlightPulse {
+          0% { box-shadow: 0 2px 8px rgba(203, 166, 247, 0.1); }
+          100% { box-shadow: 0 4px 12px rgba(203, 166, 247, 0.2); }
+        }
+        
+        .current-user-highlight {
+          transition: all 0.2s ease !important;
+        }
+        
+        .current-user-highlight:hover {
+          background: linear-gradient(135deg, rgba(203, 166, 247, 0.3) 0%, rgba(137, 180, 250, 0.3) 100%) !important;
+        }
+      `;
+      document.head.appendChild(style);
+    }
   }
 
   // Auto-slash functionality for PvP battles
@@ -9467,7 +10347,7 @@
     return items;
   };
   
-  // Simple function that just fetches inventory
+  // Simple function that just fetches inventory without clicking show more
   window.getInventoryItemsSimple = async function() {
     console.log('Fetching inventory items (simple method)...');
     try {
