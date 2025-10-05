@@ -1146,6 +1146,8 @@
         STAMINA: stamina || '-',
         STAT_POINTS: points || '-'
       });
+      
+      // The mutation observer will handle stamina updates automatically
     } catch (error) {
       updateSidebarStats({
         ATTACK: '-',
@@ -6471,6 +6473,11 @@
         safeExecute(() => applyCustomBackgrounds(), 'Background Images');
     }, 200);
     
+    // Initialize stamina per hour calculation after a delay to ensure sidebar is ready
+    setTimeout(() => {
+        safeExecute(() => initStaminaPerHourCalculation(), 'Stamina Per Hour Calculation');
+    }, 2000);
+    
     console.log('Demon Game Enhancement v3.0 - Initialization Complete!');
     console.log('Type debugExtension() in console for debug info');
   }
@@ -10350,6 +10357,36 @@
   window.autoClickShowMore = autoClickShowMore;
   window.getAllConsumableItems = getAllConsumableItems;
   window.findItemByName = findItemByName;
+  window.calculateStaminaPerHour = calculateStaminaPerHour;
+  window.updateStaminaTimerDisplay = updateStaminaTimerDisplay;
+  
+  // Debug function to test stamina calculation
+  window.debugStaminaCalculation = function() {
+    console.log('=== Debug Stamina Calculation ===');
+    const level = document.querySelector('.gtb-level')?.textContent || 'Not found';
+    const attack = document.getElementById('sidebar-attack')?.textContent || 'Not found';
+    const defense = document.getElementById('sidebar-defense')?.textContent || 'Not found';
+    const calculatedStamina = calculateStaminaPerHour();
+    
+    console.log('Level element text:', level);
+    console.log('Attack element text:', attack);
+    console.log('Defense element text:', defense);
+    console.log('Calculated stamina per hour:', calculatedStamina);
+    
+    const staminaTimer = document.getElementById('stamina_timer');
+    if (staminaTimer) {
+      console.log('Stamina timer title:', staminaTimer.getAttribute('title'));
+    } else {
+      console.log('Stamina timer element not found');
+    }
+    
+    return {
+      level: level,
+      attack: attack,
+      defense: defense,
+      calculatedStamina: calculatedStamina
+    };
+  };
 
   // Script to remove specific <br> elements and attack text
   function cleanUpInterface() {
@@ -10407,3 +10444,190 @@
       return [];
     }
   };
+
+  // Function to calculate stamina per hour based on the formula: 40 + (level/50) + ((attack + defense)/100)
+  async function calculateStaminaPerHour() {
+    try {
+      // Get level from the topbar
+      const levelElement = document.querySelector('.gtb-level');
+      let level = 0;
+      if (levelElement) {
+        const levelMatch = levelElement.textContent.match(/LV\s*(\d+)/);
+        if (levelMatch) {
+          level = parseInt(levelMatch[1]);
+        }
+      }
+
+      // Get attack and defense - prioritize sidebar elements since they're cleanest
+      let attack = 0;
+      let defense = 0;
+      
+      // Method 1: Try sidebar elements first (cleanest data)
+      const sidebarAttackElement = document.getElementById('sidebar-attack');
+      const sidebarDefenseElement = document.getElementById('sidebar-defense');
+      
+      if (sidebarAttackElement && sidebarAttackElement.textContent !== '-') {
+        attack = parseInt(sidebarAttackElement.textContent) || 0;
+      }
+      
+      if (sidebarDefenseElement && sidebarDefenseElement.textContent !== '-') {
+        defense = parseInt(sidebarDefenseElement.textContent) || 0;
+      }
+
+      // Method 2: If sidebar not available, try stats page elements and extract numbers
+      if (attack === 0 || defense === 0) {
+        const attackElement = document.getElementById('v-attack') || document.querySelector('[data-stat="attack"]');
+        const defenseElement = document.getElementById('v-defense') || document.querySelector('[data-stat="defense"]');
+        
+        if (attack === 0 && attackElement) {
+          // Extract numbers from the messy text content
+          const attackMatch = attackElement.textContent.match(/(\d+)/);
+          if (attackMatch) {
+            attack = parseInt(attackMatch[1]) || 0;
+          }
+        }
+        
+        if (defense === 0 && defenseElement) {
+          // Extract numbers from the messy text content  
+          const defenseMatch = defenseElement.textContent.match(/(\d+)/);
+          if (defenseMatch) {
+            defense = parseInt(defenseMatch[1]) || 0;
+          }
+        }        
+      }
+
+      // Method 2: If we still don't have attack/defense, try AJAX call
+      if (attack === 0 || defense === 0) {
+        try {
+          console.log('Trying AJAX for missing stats...');
+          let response = await fetch('stats_ajax.php', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+            body: 'action=get_stats'
+          });
+          
+          if (!response.ok) {
+            // Try alternative approach - allocate 0 points to get current stats
+            response = await fetch('stats_ajax.php', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+              body: 'action=allocate&stat=attack&amount=0'
+            });
+          }
+          
+          if (response.ok) {
+            const text = await response.text();
+            console.log('AJAX response received, length:', text.length);
+            
+            try {
+              const data = JSON.parse(text);
+              if (data && data.user) {
+                if (attack === 0) attack = parseInt(data.user.ATTACK || data.user.attack) || 0;
+                if (defense === 0) defense = parseInt(data.user.DEFENSE || data.user.defense) || 0;
+                console.log('AJAX stats found:', { attack, defense });
+              }
+            } catch (parseError) {
+              console.error('Error parsing AJAX response:', parseError);
+            }
+          }
+        } catch (ajaxError) {
+          console.error('AJAX request failed:', ajaxError);
+        }
+      }
+
+      // Calculate stamina per hour using the formula: 40 + (level/50) + ((attack + defense)/100)
+      const staminaPerHour = Math.round(40 + (level / 50) + ((attack + defense) / 100));
+      
+      return { level, attack, defense, staminaPerHour };
+    } catch (error) {
+      console.error('Error calculating stamina per hour:', error);
+      return { level: 0, attack: 0, defense: 0, staminaPerHour: 49 }; // Default fallback values
+    }
+  }
+
+  // Function to update the stamina timer display with the calculated amount
+  async function updateStaminaTimerDisplay() {
+    try {
+      const staminaTimer = document.getElementById('stamina_timer');
+      if (staminaTimer) {
+        const result = await calculateStaminaPerHour();
+        const { level, attack, defense, staminaPerHour } = result;
+        
+        // Check if values have changed since last update
+        const lastValues = updateStaminaTimerDisplay.lastValues || {};
+        const hasChanged = lastValues.level !== level || 
+                          lastValues.attack !== attack || 
+                          lastValues.defense !== defense ||
+                          lastValues.staminaPerHour !== staminaPerHour;
+        
+        if (hasChanged) {
+          // Update the title to show the calculated amount
+          const currentTitle = staminaTimer.getAttribute('title') || '';
+          const newTitle = currentTitle.replace(/Next \+\d+/, `Next +${staminaPerHour}`);
+          staminaTimer.setAttribute('title', newTitle);
+          
+          // Find or create the stamina rate display element
+          let staminaRateElement = document.getElementById('stamina-rate-display');
+          
+          if (!staminaRateElement) {
+            // Create the new element if it doesn't exist
+            staminaRateElement = document.createElement('span');
+            staminaRateElement.id = 'stamina-rate-display';
+            staminaRateElement.className = 'gtb-timer';
+            staminaRateElement.style.marginRight = '5px'; // Add some spacing
+            
+            // Insert it before the existing stamina timer
+            staminaTimer.parentNode.insertBefore(staminaRateElement, staminaTimer);
+          }
+          
+          // Update the stamina rate display
+          staminaRateElement.textContent = `+${staminaPerHour}/h`;
+          
+          // Store current values and log the update
+          updateStaminaTimerDisplay.lastValues = { level, attack, defense, staminaPerHour };
+          console.log(`Updated stamina per hour: +${staminaPerHour}/h (Level: ${level}, Attack: ${attack}, Defense: ${defense})`);
+        }
+      }
+    } catch (error) {
+      console.error('Error updating stamina timer display:', error);
+    }
+  }
+
+  // Function to initialize stamina per hour functionality
+  function initStaminaPerHourCalculation() {
+    // Update stamina display immediately
+    updateStaminaTimerDisplay();
+    
+    // Set up interval to update every 30 seconds (reduced frequency)
+    setInterval(() => {
+      updateStaminaTimerDisplay();
+    }, 30000);
+    
+    // Debounced update function to prevent spam
+    let updateTimeout = null;
+    const debouncedUpdate = () => {
+      if (updateTimeout) clearTimeout(updateTimeout);
+      updateTimeout = setTimeout(() => {
+        updateStaminaTimerDisplay();
+      }, 1000); // Wait 1 second after last change
+    };
+    
+    // Set up mutation observer to watch only the specific elements
+    const observer = new MutationObserver(() => {
+      debouncedUpdate();
+    });
+    
+    // Observe only the level element and the sidebar stats container
+    const levelElement = document.querySelector('.gtb-level');
+    const sidebarStatsContainer = document.querySelector('.sidebar-menu-expandable');
+    
+    if (levelElement) {
+      observer.observe(levelElement, { characterData: true, subtree: true });
+    }
+    
+    if (sidebarStatsContainer) {
+      observer.observe(sidebarStatsContainer, { characterData: true, subtree: true });
+    }
+    
+    console.log('Stamina per hour calculation initialized - observing level and sidebar stats');
+  }
