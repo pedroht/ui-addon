@@ -12624,6 +12624,9 @@
     monsterContainer.innerHTML = '';
 
     if (continueCards.length > 0) {
+      const continueHeader = continueBattleSection.querySelector('h3');
+      continueHeader.textContent = `⚔️ Continue Battle (${continueCards.length})`;
+      
       const continueGrid = continueBattleSection.querySelector('.monster-container');
       continueCards.forEach(card => continueGrid.appendChild(card));
       monsterContainer.appendChild(continueBattleSection);
