@@ -3474,12 +3474,13 @@
       }
       /* End Neo Toggle Styles */
 
-      .main-wrapper {
-        display: flex;
-        min-height: calc(100vh - 74px);
-      }
+      // .main-wrapper {
+      //   display: flex;
+      //   min-height: calc(100vh - 74px);
+      // }
 
       #game-sidebar {
+        display: none;
         width: 250px;
         background: var(--sidebar-base-color, ${extensionSettings.sidebarColor});
         border-right: 1px solid rgba(255, 255, 255, 0.06);
@@ -3711,7 +3712,6 @@
       .content-area {
         flex: 1;
         padding: 20px;
-        margin-left: 250px;
       }
 
       .settings-modal {
@@ -4092,14 +4092,14 @@
       }
 
       /* Full width topbar for pets page */
-      .game-topbar {
-        width: 100vw !important;
-        left: 0 !important;
-        margin-left: 0 !important;
-        position: fixed !important;
-        top: 0 !important;
-        z-index: 1000 !important;
-      }
+      // .game-topbar {
+      //   width: 100vw !important;
+      //   left: 0 !important;
+      //   margin-left: 0 !important;
+      //   position: fixed !important;
+      //   top: 0 !important;
+      //   z-index: 1000 !important;
+      // }
 
       .settings-section {
         margin-bottom: 25px;
@@ -4508,31 +4508,26 @@
         justify-self: start !important;
       }
 
-      /* Fix loot container layout when images are hidden - reference from HTML example */
-      .battle-images-hidden #extension-enemy-loot-container {
-        display: flex !important;
-        gap: 30px !important;
-        justify-content: space-between !important;
-        align-items: flex-start !important;
-        width: 100% !important;
-        margin-bottom: 20px !important;
-      }
-
       /* Create monster display area when images are hidden */
-      .battle-images-hidden #monster-display {
-        display: flex !important;
-        flex-direction: column !important;
-        align-items: flex-start !important;
-        gap: 10px !important;
-        flex-basis: 350px !important;
-        min-width: 250px !important;
-      }
+      // .battle-images-hidden #monster-display {
+      //   display: flex !important;
+      //   flex-direction: column !important;
+      //   align-items: flex-start !important;
+      //   gap: 10px !important;
+      //   flex-basis: 350px !important;
+      //   min-width: 250px !important;
+      // }
 
-      .battle-images-hidden #extension-loot-container {
-        display: flex !important;
-        flex-wrap: wrap !important;
-        max-width: 50% !important;
-        margin-left: auto !important;
+      // .battle-images-hidden #extension-loot-container {
+      //   display: flex !important;
+      //   flex-wrap: wrap !important;
+      //   max-width: 50% !important;
+      //   margin-left: auto !important;
+      // }
+
+      #monster-display,
+      #extension-loot-container {
+        grid-column: span 2;
       }
 
       .hp-fill {
@@ -4548,19 +4543,30 @@
 
       /* Add gap between loot and image even when images are shown */
       #extension-enemy-loot-container {
-        display: flex !important;
-        gap: 30px !important;
-        justify-content: space-between !important;
-        align-items: flex-start !important;
-        width: 100% !important;
+        display: grid !important;
+        grid-template-columns: repeat(2, 1fr);
+        gap: 48px;
+        // display: flex !important;
+        // gap: 30px !important;
+        // justify-content: space-between !important;
+        // align-items: flex-start !important;
+        // width: 100% !important;
       }
       
       /* Update loot container positioning */
       #extension-loot-container {
         display: flex !important;
         flex-wrap: wrap !important;
-        max-width: 50% !important;
-        margin-left: auto !important;
+        max-width: 100% !important;
+        // max-width: 50% !important;
+        // margin-left: auto !important;
+      }
+
+      @media (min-width: 1024px) {
+        #monster-display,
+        #extension-loot-container {
+          grid-column: span 1;
+        }
       }
       
       /* Add dynamic border to loot cards */
@@ -13372,7 +13378,7 @@
     
     // Create container for side-by-side layout
     var container = document.createElement('div');
-    container.style.cssText = `display: flex; gap: 20px; align-items: flex-start;`;
+    container.style.cssText = `display: flex; gap: 20px; align-items: flex-start; flex-wrap: wrap;`;
     
     // Style adjustments for better side-by-side display
     leaderboardPanel.style.cssText += `flex: 1; min-width: 400px;`;
