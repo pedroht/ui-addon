@@ -6,6 +6,7 @@
   var waveUpdateInterval = null;
   var monsterSortingInterval = null;
   var userDataUpdateInterval = null;
+  var hotkeyOverlayInterval = null;
   var monsterFiltersSettings = {"nameFilter":"","hideImg":false, "battleLimitAlarm":false, "battleLimitAlarmSound":true, "battleLimitAlarmVolume":70, "monsterTypeFilter":[], "hpFilter":"", "playerCountFilter":""}
  
   // Enhanced settings management
@@ -100,6 +101,13 @@
       showHeroicSlash: true, // Show heroic slash attack button
       showUltimateSlash: true, // Show ultimate slash attack button
       showLegendarySlash: true // Show legendary slash attack button
+    },
+    hotkeys: {
+      enabled: true, // Enable keyboard hotkeys
+      monsterSelection: true, // Enable number keys (1-9) for monster card selection
+      battleAttacks: true, // Enable letter keys (S,P,H,U,L) for battle attacks
+      monsterSelectionKeys: ['1', '2', '3', '4', '5', '6', '7', '8', '9'], // Customizable keys for monster selection
+      battleAttackKeys: ['s', 'p', 'h', 'u', 'l'] // Customizable keys for battle attacks
     },
     dungeonWave: {
       enabled: true, // Enable dungeon wave enhancements
@@ -420,6 +428,24 @@
       }
     }
     
+    // Ensure hotkeys settings exist with defaults
+    if (!extensionSettings.hotkeys) {
+      extensionSettings.hotkeys = {
+        enabled: true,
+        monsterSelection: true,
+        battleAttacks: true
+      };
+    }
+    
+    // Ensure customizable hotkey arrays exist with defaults
+    if (!extensionSettings.hotkeys.monsterSelectionKeys || !Array.isArray(extensionSettings.hotkeys.monsterSelectionKeys)) {
+      extensionSettings.hotkeys.monsterSelectionKeys = ['1', '2', '3', '4', '5', '6', '7', '8', '9'];
+    }
+    
+    if (!extensionSettings.hotkeys.battleAttackKeys || !Array.isArray(extensionSettings.hotkeys.battleAttackKeys)) {
+      extensionSettings.hotkeys.battleAttackKeys = ['s', 'p', 'h', 'u', 'l'];
+    }
+    
     applySettings();
       applyCustomBackgrounds();
     applyMonsterBackgrounds();
@@ -533,7 +559,7 @@
       lootItems: [],
       leaderboard: [],
       attackLogs: [],
-      availableSkills: ['slash','Power Slash'] 
+      availableSkills: ['slash','power','heroic','ultimate','legendary']
     };
 
     // Extract HP information
@@ -546,11 +572,10 @@
       }
     }
 
-    // Enhanced HP text parsing to extract current and max HP
+    // Hp parse text
     const hpText = doc.querySelector('.hp-text');
     if (hpText) {
       result.hpText = hpText.textContent.trim();
-      // Try to extract numbers from HP text like "41,877 / 250,000 HP"
       const hpMatch = result.hpText.match(/(\d+(?:,\d+)*)\s*\/\s*(\d+(?:,\d+)*)/);
       if (hpMatch) {
         result.currentHp = parseInt(hpMatch[1].replace(/,/g, ''));
@@ -570,8 +595,7 @@
       result.monsterImage = monsterImg.src;
     }
 
-    // Detect available attack skills from button text
-    const availableSkills = ['slash']; // Always available
+    const availableSkills = ['slash','power']; // Always available
 
     // Look for buttons containing specific text
     const allButtons = doc.querySelectorAll('button, input[type="submit"]');
@@ -1618,7 +1642,7 @@
     let leaderboard = [];
     let attackLogs = [];
     let damageDone = monster.damageDone || 0;
-    let availableSkills = ['slash']; // Default skills
+    let availableSkills = ['slash', 'power slash',' heroic slash']; // Default skills
     
     try {
       const html = await fetchBattlePageHtml(monster.id);
@@ -1647,8 +1671,8 @@
       }
       
       // Extract available skills for button generation
-      availableSkills = parsed.availableSkills || ['slash'];
-      
+      availableSkills = parsed.availableSkills || ['slash', 'power slash', 'heroic slash'];
+
       console.log(`Fetched data for monster ${monster.id}:`, { lootItems: lootItems.length, leaderboard: leaderboard.length, attackLogs: attackLogs.length });
     } catch (e) {
       console.warn(`Failed to fetch battle page for modal (monster ${monster.id}):`, e);
@@ -4970,6 +4994,12 @@
         text-align: right;
         font-weight: bold;
       }
+
+      /* Duplicate key validation styling */
+      .duplicate-key {
+        border: 2px solid #f38ba8 !important;
+        box-shadow: 0 0 8px rgba(243, 139, 168, 0.4) !important;
+      }
     `;
     document.head.appendChild(style);
 
@@ -6109,6 +6139,109 @@
                   </div>
                 </div>
 
+                <!-- Hotkeys Section -->
+                <div class="settings-section">
+                  <div class="settings-section-header" onclick="toggleSection(this)">
+                    <h3>⌨️ Hotkeys</h3>
+                    <span class="expand-icon">+</span>
+                  </div>
+                  <div class="settings-section-content">
+                    <p class="section-description">Configure keyboard shortcuts for monster selection and battle attacks.</p>
+                    <div class="checkbox-container">
+                      <input type="checkbox" id="hotkeys-enabled" />
+                      <label for="hotkeys-enabled">Enable Hotkeys</label>
+                    </div>
+                    <div class="checkbox-container">
+                      <input type="checkbox" id="hotkeys-monster-selection" />
+                      <label for="hotkeys-monster-selection">Enable Monster Selection (1-9 keys)</label>
+                    </div>
+                    <div class="checkbox-container">
+                      <input type="checkbox" id="hotkeys-battle-attacks" />
+                      <label for="hotkeys-battle-attacks">Enable Battle Attacks (S,P,H,U,L keys)</label>
+                    </div>
+                    <div style="margin-top: 20px; padding: 15px; background: rgba(137, 180, 250, 0.1); border-radius: 8px; border: 1px solid rgba(137, 180, 250, 0.3);">
+                      <h4 style="color: #89b4fa; margin: 0 0 15px 0; font-size: 14px;">🎯 Monster Selection Keys</h4>
+                      <p style="color: #a6adc8; font-size: 12px; margin-bottom: 15px;">
+                        Keys for selecting monsters on wave pages (1-9). Only joinable monsters are selectable.
+                      </p>
+                      <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(60px, 1fr)); gap: 8px;">
+                        <div style="display: flex; flex-direction: column; align-items: center; gap: 4px;">
+                          <label style="font-size: 11px; color: #cdd6f4;">Monster 1:</label>
+                          <input type="text" id="monster-key-1" maxlength="1" style="width: 40px; padding: 4px; text-align: center; background: #1e1e2e; color: #cdd6f4; border: 1px solid #45475a; border-radius: 4px; font-size: 12px;" />
+                        </div>
+                        <div style="display: flex; flex-direction: column; align-items: center; gap: 4px;">
+                          <label style="font-size: 11px; color: #cdd6f4;">Monster 2:</label>
+                          <input type="text" id="monster-key-2" maxlength="1" style="width: 40px; padding: 4px; text-align: center; background: #1e1e2e; color: #cdd6f4; border: 1px solid #45475a; border-radius: 4px; font-size: 12px;" />
+                        </div>
+                        <div style="display: flex; flex-direction: column; align-items: center; gap: 4px;">
+                          <label style="font-size: 11px; color: #cdd6f4;">Monster 3:</label>
+                          <input type="text" id="monster-key-3" maxlength="1" style="width: 40px; padding: 4px; text-align: center; background: #1e1e2e; color: #cdd6f4; border: 1px solid #45475a; border-radius: 4px; font-size: 12px;" />
+                        </div>
+                        <div style="display: flex; flex-direction: column; align-items: center; gap: 4px;">
+                          <label style="font-size: 11px; color: #cdd6f4;">Monster 4:</label>
+                          <input type="text" id="monster-key-4" maxlength="1" style="width: 40px; padding: 4px; text-align: center; background: #1e1e2e; color: #cdd6f4; border: 1px solid #45475a; border-radius: 4px; font-size: 12px;" />
+                        </div>
+                        <div style="display: flex; flex-direction: column; align-items: center; gap: 4px;">
+                          <label style="font-size: 11px; color: #cdd6f4;">Monster 5:</label>
+                          <input type="text" id="monster-key-5" maxlength="1" style="width: 40px; padding: 4px; text-align: center; background: #1e1e2e; color: #cdd6f4; border: 1px solid #45475a; border-radius: 4px; font-size: 12px;" />
+                        </div>
+                        <div style="display: flex; flex-direction: column; align-items: center; gap: 4px;">
+                          <label style="font-size: 11px; color: #cdd6f4;">Monster 6:</label>
+                          <input type="text" id="monster-key-6" maxlength="1" style="width: 40px; padding: 4px; text-align: center; background: #1e1e2e; color: #cdd6f4; border: 1px solid #45475a; border-radius: 4px; font-size: 12px;" />
+                        </div>
+                        <div style="display: flex; flex-direction: column; align-items: center; gap: 4px;">
+                          <label style="font-size: 11px; color: #cdd6f4;">Monster 7:</label>
+                          <input type="text" id="monster-key-7" maxlength="1" style="width: 40px; padding: 4px; text-align: center; background: #1e1e2e; color: #cdd6f4; border: 1px solid #45475a; border-radius: 4px; font-size: 12px;" />
+                        </div>
+                        <div style="display: flex; flex-direction: column; align-items: center; gap: 4px;">
+                          <label style="font-size: 11px; color: #cdd6f4;">Monster 8:</label>
+                          <input type="text" id="monster-key-8" maxlength="1" style="width: 40px; padding: 4px; text-align: center; background: #1e1e2e; color: #cdd6f4; border: 1px solid #45475a; border-radius: 4px; font-size: 12px;" />
+                        </div>
+                        <div style="display: flex; flex-direction: column; align-items: center; gap: 4px;">
+                          <label style="font-size: 11px; color: #cdd6f4;">Monster 9:</label>
+                          <input type="text" id="monster-key-9" maxlength="1" style="width: 40px; padding: 4px; text-align: center; background: #1e1e2e; color: #cdd6f4; border: 1px solid #45475a; border-radius: 4px; font-size: 12px;" />
+                        </div>
+                      </div>
+                    </div>
+                    <div style="margin-top: 20px; padding: 15px; background: rgba(249, 226, 175, 0.1); border-radius: 8px; border: 1px solid rgba(249, 226, 175, 0.3);">
+                      <h4 style="color: #f9e2af; margin: 0 0 15px 0; font-size: 14px;">⚔️ Battle Attack Keys</h4>
+                      <p style="color: #a6adc8; font-size: 12px; margin-bottom: 15px;">
+                        Keys for triggering battle attacks in modal windows.
+                      </p>
+                      <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(80px, 1fr)); gap: 8px;">
+                        <div style="display: flex; flex-direction: column; align-items: center; gap: 4px;">
+                          <label style="font-size: 11px; color: #cdd6f4;">Slash:</label>
+                          <input type="text" id="attack-key-1" maxlength="1" style="width: 40px; padding: 4px; text-align: center; background: #1e1e2e; color: #cdd6f4; border: 1px solid #45475a; border-radius: 4px; font-size: 12px;" />
+                        </div>
+                        <div style="display: flex; flex-direction: column; align-items: center; gap: 4px;">
+                          <label style="font-size: 11px; color: #cdd6f4;">Power Slash:</label>
+                          <input type="text" id="attack-key-2" maxlength="1" style="width: 40px; padding: 4px; text-align: center; background: #1e1e2e; color: #cdd6f4; border: 1px solid #45475a; border-radius: 4px; font-size: 12px;" />
+                        </div>
+                        <div style="display: flex; flex-direction: column; align-items: center; gap: 4px;">
+                          <label style="font-size: 11px; color: #cdd6f4;">Heroic Slash:</label>
+                          <input type="text" id="attack-key-3" maxlength="1" style="width: 40px; padding: 4px; text-align: center; background: #1e1e2e; color: #cdd6f4; border: 1px solid #45475a; border-radius: 4px; font-size: 12px;" />
+                        </div>
+                        <div style="display: flex; flex-direction: column; align-items: center; gap: 4px;">
+                          <label style="font-size: 11px; color: #cdd6f4;">Ultimate Slash:</label>
+                          <input type="text" id="attack-key-4" maxlength="1" style="width: 40px; padding: 4px; text-align: center; background: #1e1e2e; color: #cdd6f4; border: 1px solid #45475a; border-radius: 4px; font-size: 12px;" />
+                        </div>
+                        <div style="display: flex; flex-direction: column; align-items: center; gap: 4px;">
+                          <label style="font-size: 11px; color: #cdd6f4;">Legendary Slash:</label>
+                          <input type="text" id="attack-key-5" maxlength="1" style="width: 40px; padding: 4px; text-align: center; background: #1e1e2e; color: #cdd6f4; border: 1px solid #45475a; border-radius: 4px; font-size: 12px;" />
+                        </div>
+                      </div>
+                    </div>
+                    <div style="margin-top: 15px; text-align: center;">
+                      <button class="settings-button" id="reset-hotkeys" style="background: #f38ba8; margin-right: 10px;">
+                        🔄 Reset to Defaults
+                      </button>
+                      <button class="settings-button" id="save-hotkeys" style="background: #a6e3a1;">
+                        💾 Save Hotkeys
+                      </button>
+                    </div>
+                  </div>
+                </div>
+
                 <!-- Quest Widget Section -->
                 <div class="settings-section">
                   <div class="settings-section-header" onclick="toggleSection(this)">
@@ -6544,6 +6677,7 @@
       setupLootHelperSettings();
       setupPetTeamsSettings();
       setupQuestWidgetSettings();
+      setupHotkeysSettings();
       setupMenuCustomizationListeners();
       setupPvPBattlePredictionSettings();
         
@@ -6647,25 +6781,24 @@
       resetBtn.addEventListener('click', function() {
         // Reset to default menu items
         extensionSettings.menuItems = [
-          { id: 'pvp', name: 'PvP Arena', visible: true, order: 0 },
-          { id: 'orc_cull', name: 'War Drums of GRAKTHAR', visible: true, order: 1 },
+          { id: 'halloween_event', name: 'Halloween Event', visible: true, order: 1 },
           { id: 'event_battlefield', name: 'Event Battlefield', visible: true, order: 2 },
-          { id: 'gate_grakthar', name: 'Gate Grakthar', visible: true, order: 3 },
-          { id: 'inventory', name: 'Inventory & Equipment', visible: true, order: 4 },
-          { id: 'pets', name: 'Pets & Eggs', visible: true, order: 5 },
-          { id: 'stats', name: 'Stats', visible: true, order: 7 },
-          { id: 'blacksmith', name: 'Blacksmith', visible: true, order: 8 },
-          { id: 'merchant', name: 'Merchant', visible: true, order: 9 },
-          { id: 'inventory_quick', name: 'Inventory Quick Access', visible: true, order: 10 },
-          { id: 'achievements', name: 'Achievements', visible: true, order: 11 },
-          { id: 'collections', name: 'Collections', visible: true, order: 12 },
-          { id: 'guide', name: 'How To Play', visible: true, order: 13 },
-          { id: 'leaderboard', name: 'Weekly Leaderboard', visible: true, order: 14 },
-          { id: 'chat', name: 'Global Chat', visible: true, order: 15 },
-          { id: 'battle_pass', name: 'Battle Pass', visible: true, order: 16 },
-          { id: 'patches', name: 'Patch Notes', visible: true, order: 17 },
-          { id: 'manga', name: 'Manga-Manhwa-Manhua', visible: true, order: 17 },
-          { id: 'settings', name: 'Settings', visible: true, order: 18 }
+          { id: 'battle_pass', name: 'Battle Pass', visible: true, order: 3 },
+          { id: 'pvp', name: 'PvP Arena', visible: true, order: 4 },
+          { id: 'gate_grakthar', name: 'Gate Grakthar', visible: true, order: 5 },
+          { id: 'inventory', name: 'Inventory & Equipment', visible: true, order: 6 },
+          { id: 'pets', name: 'Pets & Eggs', visible: true, order: 7 },
+          { id: 'guild', name: 'Guild', visible: true, order: 8 },
+          { id: 'stats', name: 'Stats', visible: true, order: 9 },
+          { id: 'blacksmith', name: 'Blacksmith', visible: true, order: 10 },
+          { id: 'legendary_forge', name: 'Legendary Forge', visible: true, order: 11 },
+          { id: 'merchant', name: 'Merchant', visible: true, order: 12 },
+          { id: 'inventory_quick', name: 'Inventory Quick Access', visible: true, order: 13 },
+          { id: 'achievements', name: 'Achievements', visible: true, order: 14 },
+          { id: 'collections', name: 'Collections', visible: true, order: 15 },
+          { id: 'guide', name: 'How To Play', visible: true, order: 16 },
+          { id: 'leaderboard', name: 'Weekly Leaderboard', visible: true, order: 17 },
+          { id: 'chat', name: 'Global Chat', visible: true, order: 18 }
         ];
         
         saveSettings();
@@ -7668,6 +7801,248 @@
     }
   }
 
+  function setupHotkeysSettings() {
+  // Helper function to validate hotkey input
+  function validateHotkeyInput(key, currentInputId) {
+    // Check for system/browser reserved keys
+    const reservedKeys = ['f1', 'f2', 'f3', 'f4', 'f5', 'f6', 'f7', 'f8', 'f9', 'f10', 'f11', 'f12', 'tab', 'escape', 'enter', 'backspace', 'delete', 'insert', 'home', 'end', 'pageup', 'pagedown', 'arrowup', 'arrowdown', 'arrowleft', 'arrowright', 'control', 'alt', 'shift', 'meta', 'capslock', 'numlock', 'scrolllock'];
+    if (reservedKeys.includes(key.toLowerCase())) {
+      alert(`Key "${key}" is reserved by the system/browser and cannot be used as a hotkey.`);
+      return false;
+    }
+
+    // Check for duplicates within monster selection keys
+    const monsterInputs = [];
+    for (let i = 1; i <= 9; i++) {
+      const input = document.getElementById(`monster-key-${i}`);
+      if (input && input.id !== currentInputId) {
+        monsterInputs.push(input.value.toLowerCase());
+      }
+    }
+    if (monsterInputs.includes(key.toLowerCase())) {
+      alert(`Key "${key}" is already used for monster selection. Please choose a different key.`);
+      return false;
+    }
+
+    // Check for duplicates within battle attack keys
+    const attackInputs = [];
+    for (let i = 1; i <= 5; i++) {
+      const input = document.getElementById(`attack-key-${i}`);
+      if (input && input.id !== currentInputId) {
+        attackInputs.push(input.value.toLowerCase());
+      }
+    }
+    if (attackInputs.includes(key.toLowerCase())) {
+      alert(`Key "${key}" is already used for battle attacks. Please choose a different key.`);
+      return false;
+    }
+
+    return true;
+  }
+    const enabledCheckbox = document.getElementById('hotkeys-enabled');
+    const monsterSelectionCheckbox = document.getElementById('hotkeys-monster-selection');
+    const battleAttacksCheckbox = document.getElementById('hotkeys-battle-attacks');
+    const resetButton = document.getElementById('reset-hotkeys');
+    const saveButton = document.getElementById('save-hotkeys');
+
+    // Initialize checkboxes
+    if (enabledCheckbox) {
+      enabledCheckbox.checked = extensionSettings.hotkeys.enabled;
+      enabledCheckbox.addEventListener('change', (e) => {
+        extensionSettings.hotkeys.enabled = e.target.checked;
+        saveSettings();
+        if (e.target.checked) {
+          initHotkeys();
+          showNotification('Hotkeys enabled', 'success');
+        } else {
+          showNotification('Hotkeys disabled', 'info');
+        }
+      });
+    }
+
+    if (monsterSelectionCheckbox) {
+      monsterSelectionCheckbox.checked = extensionSettings.hotkeys.monsterSelection;
+      monsterSelectionCheckbox.addEventListener('change', (e) => {
+        extensionSettings.hotkeys.monsterSelection = e.target.checked;
+        saveSettings();
+        showNotification('Monster selection hotkeys ' + (e.target.checked ? 'enabled' : 'disabled'), 'success');
+      });
+    }
+
+    if (battleAttacksCheckbox) {
+      battleAttacksCheckbox.checked = extensionSettings.hotkeys.battleAttacks;
+      battleAttacksCheckbox.addEventListener('change', (e) => {
+        extensionSettings.hotkeys.battleAttacks = e.target.checked;
+        saveSettings();
+        showNotification('Battle attack hotkeys ' + (e.target.checked ? 'enabled' : 'disabled'), 'success');
+      });
+    }
+
+    // Add visual feedback for duplicate keys
+    function updateInputValidation() {
+      const allKeys = [];
+      const inputs = [];
+
+      // Collect all monster selection inputs
+      for (let i = 1; i <= 9; i++) {
+        const input = document.getElementById(`monster-key-${i}`);
+        if (input) {
+          inputs.push(input);
+          allKeys.push({ key: input.value.toLowerCase(), input: input, type: 'monster' });
+        }
+      }
+
+      // Collect all battle attack inputs
+      for (let i = 1; i <= 5; i++) {
+        const input = document.getElementById(`attack-key-${i}`);
+        if (input) {
+          inputs.push(input);
+          allKeys.push({ key: input.value.toLowerCase(), input: input, type: 'attack' });
+        }
+      }
+
+      // Check for duplicates and mark inputs
+      const keyCounts = {};
+      allKeys.forEach(item => {
+        keyCounts[item.key] = (keyCounts[item.key] || 0) + 1;
+      });
+
+      inputs.forEach(input => {
+        const key = input.value.toLowerCase();
+        if (keyCounts[key] > 1) {
+          input.classList.add('duplicate-key');
+        } else {
+          input.classList.remove('duplicate-key');
+        }
+      });
+    }
+
+    // Add input event listeners for real-time validation
+    for (let i = 1; i <= 9; i++) {
+      const input = document.getElementById(`monster-key-${i}`);
+      if (input) {
+        input.addEventListener('input', updateInputValidation);
+      }
+    }
+    for (let i = 1; i <= 5; i++) {
+      const input = document.getElementById(`attack-key-${i}`);
+      if (input) {
+        input.addEventListener('input', updateInputValidation);
+      }
+    }
+
+    // Initialize battle attack key inputs
+    for (let i = 1; i <= 5; i++) {
+      const input = document.getElementById(`attack-key-${i}`);
+      if (input && extensionSettings.hotkeys.battleAttackKeys && extensionSettings.hotkeys.battleAttackKeys[i-1]) {
+        input.value = extensionSettings.hotkeys.battleAttackKeys[i-1];
+        input.addEventListener('input', (e) => {
+          const value = e.target.value.toLowerCase();
+          if (value.length > 1) {
+            e.target.value = value.charAt(0);
+          }
+          // Validate key is not empty and not conflicting
+          if (value && validateHotkeyInput(value, `attack-key-${i}`)) {
+            // Update the settings array
+            if (!extensionSettings.hotkeys.battleAttackKeys) {
+              extensionSettings.hotkeys.battleAttackKeys = ['s', 'p', 'h', 'u', 'l'];
+            }
+            extensionSettings.hotkeys.battleAttackKeys[i-1] = value;
+          } else if (!value) {
+            // Reset to default if empty
+            const defaults = ['s', 'p', 'h', 'u', 'l'];
+            const defaultKey = defaults[i-1];
+            e.target.value = defaultKey;
+            if (!extensionSettings.hotkeys.battleAttackKeys) {
+              extensionSettings.hotkeys.battleAttackKeys = ['s', 'p', 'h', 'u', 'l'];
+            }
+            extensionSettings.hotkeys.battleAttackKeys[i-1] = defaultKey;
+          }
+        });
+      }
+    }
+
+    // Reset button
+    if (resetButton) {
+      resetButton.addEventListener('click', () => {
+        // Reset to defaults
+        extensionSettings.hotkeys.monsterSelectionKeys = ['1', '2', '3', '4', '5', '6', '7', '8', '9'];
+        extensionSettings.hotkeys.battleAttackKeys = ['s', 'p', 'h', 'u', 'l'];
+
+        // Update input fields
+        for (let i = 1; i <= 9; i++) {
+          const input = document.getElementById(`monster-key-${i}`);
+          if (input) input.value = `${i}`;
+        }
+        for (let i = 1; i <= 5; i++) {
+          const input = document.getElementById(`attack-key-${i}`);
+          if (input) input.value = ['s', 'p', 'h', 'u', 'l'][i-1];
+        }
+
+        saveSettings();
+        showNotification('Hotkeys reset to defaults', 'success');
+      });
+    }
+
+    // Save button
+    if (saveButton) {
+      saveButton.addEventListener('click', () => {
+        // Validate all keys before saving
+        let hasErrors = false;
+        const allKeys = [];
+
+        // Collect and validate monster selection keys
+        for (let i = 1; i <= 9; i++) {
+          const input = document.getElementById(`monster-key-${i}`);
+          if (input) {
+            const key = input.value.toLowerCase().trim();
+            if (!key) {
+              alert(`Monster selection key ${i} cannot be empty.`);
+              hasErrors = true;
+              break;
+            }
+            if (allKeys.includes(key)) {
+              alert(`Duplicate key "${key}" found. Please use unique keys for all hotkeys.`);
+              hasErrors = true;
+              break;
+            }
+            allKeys.push(key);
+          }
+        }
+
+        if (!hasErrors) {
+          // Collect and validate battle attack keys
+          for (let i = 1; i <= 5; i++) {
+            const input = document.getElementById(`attack-key-${i}`);
+            if (input) {
+              const key = input.value.toLowerCase().trim();
+              if (!key) {
+                alert(`Battle attack key ${i} cannot be empty.`);
+                hasErrors = true;
+                break;
+              }
+              if (allKeys.includes(key)) {
+                alert(`Duplicate key "${key}" found. Please use unique keys for all hotkeys.`);
+                hasErrors = true;
+                break;
+              }
+              allKeys.push(key);
+            }
+          }
+        }
+
+        if (!hasErrors) {
+          // Save settings
+          saveSettings();
+          showNotification('Hotkeys saved successfully!', 'success');
+
+          // Reinitialize hotkeys with new settings
+          initHotkeys();
+        }
+      });
+    }
+  }
+
   function applySemiTransparentEffect() {
     const sidebar = document.getElementById('game-sidebar');
     if (!sidebar) {
@@ -7918,7 +8293,7 @@
     }
     
     // Handle wave/event pages
-    if (currentPage.includes('active_wave.php') || currentPage.includes('orc_cull_event.php')) {
+    if (currentPage.includes('active_wave.php')) {
       const panels = document.querySelectorAll('.panel');
       panels.forEach((panel, index) => {
         const monsterNameElements = panel.querySelectorAll('h3, strong');
@@ -8526,7 +8901,7 @@
   }
 
   function startWaveAutoRefresh() {
-    const intervalMs = 5000;
+    const intervalMs = (extensionSettings.waveAutoRefresh.interval || 10) * 1000;
 
     waveRefreshInterval = setInterval(() => {
       console.log('Auto-refreshing wave page (soft)...');
@@ -8775,29 +9150,6 @@
     }
   }
 
-  function performAutoSurrender() {
-    const surrenderBtn = document.getElementById('btnSurrender');
-    if (surrenderBtn && !surrenderBtn.disabled) {
-
-      
-      // Show notification
-      if (typeof showNotification === 'function') {
-        showNotification('Auto-surrendering due to low win probability', 'error');
-      }
-      
-      // Override the confirm dialog to automatically return true
-      const originalConfirm = window.confirm;
-      window.confirm = function() { return true; };
-      
-      // Click surrender button
-      surrenderBtn.click();
-      
-      // Restore original confirm function after a short delay
-      setTimeout(() => {
-        window.confirm = originalConfirm;
-      }, 1000);
-    }
-  }
 
   // Enhanced Quick Access Pinning System - Universal Sidebar Shortcuts
 
@@ -9509,25 +9861,24 @@
   window.resetMenuCustomization = function() {
     // Reset to default menu items
     extensionSettings.menuItems = [
-      { id: 'pvp', name: 'PvP Arena', visible: true, order: 0 },
-      { id: 'orc_cull', name: 'War Drums of GRAKTHAR', visible: true, order: 1 },
+      { id: 'halloween_event', name: 'Halloween Event', visible: true, order: 1 },
       { id: 'event_battlefield', name: 'Event Battlefield', visible: true, order: 2 },
-      { id: 'gate_grakthar', name: 'Gate Grakthar', visible: true, order: 3 },
-      { id: 'inventory', name: 'Inventory & Equipment', visible: true, order: 4 },
-      { id: 'pets', name: 'Pets & Eggs', visible: true, order: 5 },
-      { id: 'stats', name: 'Stats', visible: true, order: 7 },
-      { id: 'blacksmith', name: 'Blacksmith', visible: true, order: 8 },
-      { id: 'merchant', name: 'Merchant', visible: true, order: 9 },
-      { id: 'inventory_quick', name: 'Inventory Quick Access', visible: true, order: 10 },
-      { id: 'achievements', name: 'Achievements', visible: true, order: 11 },
-      { id: 'collections', name: 'Collections', visible: true, order: 12 },
-      { id: 'guide', name: 'How To Play', visible: true, order: 13 },
-      { id: 'leaderboard', name: 'Weekly Leaderboard', visible: true, order: 14 },
-      { id: 'chat', name: 'Global Chat', visible: true, order: 15 },
-      { id: 'battle_pass', name: 'Battle Pass', visible: true, order: 16 },
-      { id: 'patches', name: 'Patch Notes', visible: true, order: 17 },
-      { id: 'manga', name: 'Manga-Manhwa-Manhua', visible: true, order: 17 },
-      { id: 'settings', name: 'Settings', visible: true, order: 18 }
+      { id: 'battle_pass', name: 'Battle Pass', visible: true, order: 3 },
+      { id: 'pvp', name: 'PvP Arena', visible: true, order: 4 },
+      { id: 'gate_grakthar', name: 'Gate Grakthar', visible: true, order: 5 },
+      { id: 'inventory', name: 'Inventory & Equipment', visible: true, order: 6 },
+      { id: 'pets', name: 'Pets & Eggs', visible: true, order: 7 },
+      { id: 'guild', name: 'Guild', visible: true, order: 8 },
+      { id: 'stats', name: 'Stats', visible: true, order: 9 },
+      { id: 'blacksmith', name: 'Blacksmith', visible: true, order: 10 },
+      { id: 'legendary_forge', name: 'Legendary Forge', visible: true, order: 11 },
+      { id: 'merchant', name: 'Merchant', visible: true, order: 12 },
+      { id: 'inventory_quick', name: 'Inventory Quick Access', visible: true, order: 13 },
+      { id: 'achievements', name: 'Achievements', visible: true, order: 14 },
+      { id: 'collections', name: 'Collections', visible: true, order: 15 },
+      { id: 'guide', name: 'How To Play', visible: true, order: 16 },
+      { id: 'leaderboard', name: 'Weekly Leaderboard', visible: true, order: 17 },
+      { id: 'chat', name: 'Global Chat', visible: true, order: 18 }
     ];
     
     saveSettings();
@@ -10968,6 +11319,9 @@
       battleLimitAlarmVolume: parseInt(document.getElementById('battle-limit-alarm-volume').value, 10)
     };
     localStorage.setItem('demonGameFilterSettings', JSON.stringify(settings));
+
+    // Refresh hotkey overlays after filter changes
+    addMonsterCardHotkeyOverlays();
   }
 
   // Play alarm sound function
@@ -12164,15 +12518,13 @@
           // Wait a bit for the damage to update, then check loot highlighting
           setTimeout(() => {
             highlightLootCards();
-          }, 750); // Wait 750ms for damage to update
+          }, 1000); // Wait 100ms for damage to update
         });
       }
     });
   }
 
   function colorMyself(){
-    // Don't interfere with the website's natural damage updating
-    // Just let the website update #yourDamageValue automatically
 
         // Only create containers if they don't already exist
         if (!document.getElementById('extension-enemy-loot-container')) {
@@ -12497,6 +12849,16 @@
           console.error('initMonsterSorting error:', e);
         }
       }, ms);
+    }
+    // Refresh hotkey overlays every 2 seconds to handle dynamic changes
+    if (!hotkeyOverlayInterval) {
+      hotkeyOverlayInterval = setInterval(() => {
+        try {
+          addMonsterCardHotkeyOverlays();
+        } catch (e) {
+          console.error('addMonsterCardHotkeyOverlays error:', e);
+        }
+      }, 2000);
     }
   }
 
@@ -17618,3 +17980,383 @@
   if (!userDataUpdateInterval && window.location.pathname.includes('/active_wave.php')) {
     userDataUpdateInterval = setInterval(updateUserDataFromWavePage, 1000);
   }
+
+  // ===== HOTKEYS SYSTEM =====
+
+  // Initialize hotkeys functionality
+  function initHotkeys() {
+    if (!extensionSettings.hotkeys.enabled) return;
+
+    // Add global keydown event listener for hotkeys
+    document.addEventListener('keydown', handleHotkey, true);
+  }
+
+  // Handle hotkey events
+  function handleHotkey(event) {
+    if (!extensionSettings.hotkeys.enabled) return;
+
+    // Ignore hotkeys if user is typing in an input field
+    if (event.target.tagName === 'INPUT' || event.target.tagName === 'TEXTAREA' || event.target.contentEditable === 'true') {
+      return;
+    }
+
+    const key = event.key;
+
+    // Check if we're on a wave page and monster selection hotkeys are enabled
+    if (extensionSettings.hotkeys.monsterSelection && window.location.pathname.includes('/active_wave.php')) {
+      // Check if the pressed key is in the configured monster selection keys
+      const monsterKeyIndex = extensionSettings.hotkeys.monsterSelectionKeys.indexOf(key);
+      if (monsterKeyIndex !== -1) {
+        event.preventDefault();
+        event.stopPropagation();
+        selectMonsterCard(monsterKeyIndex); // Use the index in the array
+        return;
+      }
+    }
+
+    // Check if battle modal is open and battle attack hotkeys are enabled
+    if (extensionSettings.hotkeys.battleAttacks && isModalOpen) {
+      // Check if the pressed key is in the configured battle attack keys
+      const attackKeyIndex = extensionSettings.hotkeys.battleAttackKeys.findIndex(k => k.toLowerCase() === key.toLowerCase());
+      if (attackKeyIndex !== -1) {
+        event.preventDefault();
+        event.stopPropagation();
+        triggerBattleAttack(attackKeyIndex + 1); // Convert to 1-based index for triggerBattleAttack
+        return;
+      }
+    }
+  }
+
+  // Select and join monster card by index (0-8 for keys 1-9)
+  function selectMonsterCard(index) {
+    if (!extensionSettings.hotkeys.enabled || !extensionSettings.hotkeys.monsterSelection) return;
+    if (!window.location.pathname.includes('/active_wave.php')) return;
+
+    const allMonsterCards = document.querySelectorAll('.monster-card');
+    const eligibleCards = []; // Collect all eligible cards first
+
+    // First pass: collect all eligible cards (joinable, visible)
+    allMonsterCards.forEach((card) => {
+      // Check if monster card is currently visible (filtered)
+      if (card.style.display === 'none') return;
+
+      // Check if monster is joinable
+      const joinBtn = card.querySelector('.join-btn, button[onclick*="join"], a[href*="battle.php"]');
+      const hpText = card.querySelector('.hp-text, .hp-bar .hp-fill');
+
+      let isJoinable = false;
+
+      // Check if monster is joinable:
+      // 1. Has a join button
+      // 2. Button is not disabled
+      // 3. Monster is not defeated (has HP remaining)
+      // 4. Button text does NOT contain "Continue" (exclude active battles)
+      if (joinBtn && !joinBtn.disabled && !joinBtn.classList.contains('disabled')) {
+        // Debug: log button text to see what it actually contains
+        const btnText = joinBtn.textContent?.trim().toLowerCase() || '';
+        console.log('Selection - Button text:', btnText);
+
+        // More robust check for continue battles - check for various forms
+        if (btnText.includes('continue') || btnText.includes('resume') || btnText.includes('ongoing')) {
+          isJoinable = false; // Explicitly exclude continue/active battles
+          console.log('Selection - Excluding continue battle:', btnText);
+        } else {
+          // Check if monster has HP (not defeated)
+          let hasHp = true;
+          if (hpText) {
+            const hpContent = hpText.textContent || '';
+            // If HP shows 0 or contains defeat indicators, skip
+            if (hpContent.includes('0 /') || hpContent.includes('Defeated') || hpContent.includes('DEFEATED')) {
+              hasHp = false;
+            }
+          }
+
+          // Also check HP bar width
+          const hpFill = card.querySelector('.hp-bar .hp-fill');
+          if (hpFill) {
+            const width = hpFill.style.width || '';
+            if (width === '0%' || width === '0px') {
+              hasHp = false;
+            }
+          }
+
+          if (hasHp) {
+            isJoinable = true;
+          }
+        }
+      }
+
+      // Only add to eligible list if monster is joinable
+      if (isJoinable) {
+        eligibleCards.push(card);
+      }
+    });
+
+    console.log('Selection - Found', eligibleCards.length, 'eligible cards, selecting index', index);
+
+    // Select from the first 9 eligible cards
+    if (index >= 0 && index < Math.min(9, eligibleCards.length)) {
+      const card = eligibleCards[index];
+      const joinBtn = card.querySelector('.join-btn, button[onclick*="join"], a[href*="battle.php"]');
+
+      if (joinBtn) {
+        // Add visual feedback
+        card.style.outline = '3px solid #f9e2af';
+        card.style.boxShadow = '0 0 20px rgba(249, 226, 175, 0.5)';
+        setTimeout(() => {
+          card.style.outline = '';
+          card.style.boxShadow = '';
+        }, 500);
+
+        // Trigger the join action
+        if (joinBtn.classList.contains('join-btn') || joinBtn.onclick) {
+          joinBtn.click();
+        } else if (joinBtn.tagName === 'A') {
+          // For direct battle links, extract monster ID and use handleJoin
+          const href = joinBtn.getAttribute('href');
+          const match = href.match(/id=(\d+)/);
+          if (match) {
+            const monsterId = match[1];
+            // Find the monster data or create a minimal monster object
+            const monster = { id: monsterId, name: 'Monster' };
+            handleJoin(monsterId, joinBtn);
+          }
+        }
+
+        showNotification(`Selected monster ${index + 1}`, '#2ecc71');
+      }
+    } else {
+      console.log('Selection - Index', index, 'out of range for', eligibleCards.length, 'eligible cards');
+    }
+  }
+
+  // Trigger battle attack by number (1-5)
+  function triggerBattleAttack(number) {
+    const modal = document.getElementById('battleModal');
+    if (!modal) return;
+
+    // Map number keys to skill IDs:
+    // 1 = Slash (S key)
+    // 2 = Power Slash (P key)
+    // 3 = Heroic Slash (H key)
+    // 4 = Ultimate Slash (U key)
+    // 5 = Legendary Slash (L key)
+
+    const skillMap = {
+      1: '0',    // Slash
+      2: '-1',   // Power Slash
+      3: '-2',   // Heroic Slash
+      4: '-3',   // Ultimate Slash
+      5: '-4'    // Legendary Slash
+    };
+
+    const skillId = skillMap[number];
+    if (!skillId) return;
+
+    // Find the attack button with the corresponding skill ID
+    const attackBtn = modal.querySelector(`.attack-btn[data-skill-id="${skillId}"]`);
+    if (attackBtn && !attackBtn.disabled) {
+      // Add visual feedback
+      attackBtn.style.transform = 'scale(1.05)';
+      attackBtn.style.boxShadow = '0 0 20px rgba(249, 226, 175, 0.8)';
+      setTimeout(() => {
+        attackBtn.style.transform = '';
+        attackBtn.style.boxShadow = '';
+      }, 200);
+
+      // Trigger the attack
+      attackBtn.click();
+
+      // Show which attack was triggered
+      const skillNames = {
+        '0': 'Slash',
+        '-1': 'Power Slash',
+        '-2': 'Heroic Slash',
+        '-3': 'Ultimate Slash',
+        '-4': 'Legendary Slash'
+      };
+      
+      const keyPressed = extensionSettings.hotkeys.battleAttackKeys[number - 1]?.toUpperCase() || number.toString();
+      showNotification(`Used ${skillNames[skillId]} (${keyPressed})`, '#2ecc71');
+    }
+  }
+
+  // Add number overlays to monster cards when hotkeys are enabled
+  function addMonsterCardHotkeyOverlays() {
+    if (!extensionSettings.hotkeys.enabled || !extensionSettings.hotkeys.monsterSelection) return;
+    if (!window.location.pathname.includes('/active_wave.php')) return;
+
+    // Clear all existing hotkey overlays first
+    document.querySelectorAll('.hotkey-overlay').forEach(overlay => overlay.remove());
+
+    const allMonsterCards = document.querySelectorAll('.monster-card');
+    const eligibleCards = []; // Collect all eligible cards first
+
+    // First pass: collect all eligible cards (joinable, visible)
+    allMonsterCards.forEach((card) => {
+      // Check if monster card is currently visible (filtered)
+      if (card.style.display === 'none') return;
+
+      // Check if monster is joinable (same logic as selectMonsterCard)
+      const joinBtn = card.querySelector('.join-btn, button[onclick*="join"], a[href*="battle.php"]');
+      const hpText = card.querySelector('.hp-text, .hp-bar .hp-fill');
+
+      let isJoinable = false;
+
+      // Check if monster is joinable:
+      // 1. Has a join button
+      // 2. Button is not disabled
+      // 3. Monster is not defeated (has HP remaining)
+      // 4. Button text does NOT contain "Continue" (exclude active battles)
+      if (joinBtn && !joinBtn.disabled && !joinBtn.classList.contains('disabled')) {
+        // Debug: log button text to see what it actually contains
+        const btnText = joinBtn.textContent?.trim().toLowerCase() || '';
+        console.log('Button text:', btnText);
+
+        // More robust check for continue battles - check for various forms
+        if (btnText.includes('continue') || btnText.includes('resume') || btnText.includes('ongoing')) {
+          isJoinable = false; // Explicitly exclude continue/active battles
+          console.log('Excluding continue battle:', btnText);
+        } else {
+          // Check if monster has HP (not defeated)
+          let hasHp = true;
+          if (hpText) {
+            const hpContent = hpText.textContent || '';
+            // If HP shows 0 or contains defeat indicators, skip
+            if (hpContent.includes('0 /') || hpContent.includes('Defeated') || hpContent.includes('DEFEATED')) {
+              hasHp = false;
+            }
+          }
+
+          // Also check HP bar width
+          const hpFill = card.querySelector('.hp-bar .hp-fill');
+          if (hpFill) {
+            const width = hpFill.style.width || '';
+            if (width === '0%' || width === '0px') {
+              hasHp = false;
+            }
+          }
+
+          if (hasHp) {
+            isJoinable = true;
+          }
+        }
+      }
+
+      // Only add to eligible list if monster is joinable
+      if (isJoinable) {
+        eligibleCards.push(card);
+      }
+    });
+
+    console.log('Found', eligibleCards.length, 'eligible cards for hotkeys');
+
+    // Second pass: add overlays only to the first 9 eligible cards
+    const maxHotkeys = Math.min(9, eligibleCards.length);
+    for (let i = 0; i < maxHotkeys; i++) {
+      const card = eligibleCards[i];
+      const overlay = document.createElement('div');
+      overlay.className = 'hotkey-overlay';
+      overlay.textContent = extensionSettings.hotkeys.monsterSelectionKeys[i]?.toUpperCase() || (i + 1).toString();
+      overlay.style.cssText = `
+        position: absolute;
+        top: 5px;
+        right: 5px;
+        background: linear-gradient(135deg, #f9e2af, #fab387);
+        color: #1e1e2e;
+        font-size: 14px;
+        font-weight: bold;
+        width: 24px;
+        height: 24px;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+        z-index: 10;
+        border: 2px solid #1e1e2e;
+      `;
+
+      // Make sure the card has relative positioning
+      if (card.style.position !== 'relative' && card.style.position !== 'absolute') {
+        card.style.position = 'relative';
+      }
+
+      card.appendChild(overlay);
+    }
+  }  // Add number overlays to attack buttons when hotkeys are enabled
+  function addBattleAttackHotkeyOverlays() {
+    if (!extensionSettings.hotkeys.enabled || !extensionSettings.hotkeys.battleAttacks) return;
+
+    const modal = document.getElementById('battleModal');
+    if (!modal) return;
+
+    const attackButtons = modal.querySelectorAll('.attack-btn');
+    attackButtons.forEach((btn, index) => {
+      // Check if overlay already exists
+      if (btn.querySelector('.hotkey-overlay')) return;
+
+      // Map skill IDs to hotkey letters from settings
+      const skillId = btn.getAttribute('data-skill-id');
+      let hotkeyLetter = null;
+      const skillIndex = ['0', '-1', '-2', '-3', '-4'].indexOf(skillId);
+      
+      if (skillIndex !== -1 && extensionSettings.hotkeys.battleAttackKeys[skillIndex]) {
+        hotkeyLetter = extensionSettings.hotkeys.battleAttackKeys[skillIndex].toUpperCase();
+      }
+
+      if (!hotkeyLetter) return;
+
+      const overlay = document.createElement('div');
+      overlay.className = 'hotkey-overlay';
+      overlay.textContent = hotkeyLetter;
+      overlay.style.cssText = `
+        position: absolute;
+        top: -8px;
+        right: -8px;
+        background: linear-gradient(135deg, #f9e2af, #fab387);
+        color: #1e1e2e;
+        font-size: 12px;
+        font-weight: bold;
+        width: 20px;
+        height: 20px;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        box-shadow: 0 2px 6px rgba(0,0,0,0.3);
+        z-index: 10;
+        border: 1px solid #1e1e2e;
+      `;
+
+      // Make sure the button has relative positioning
+      btn.style.position = 'relative';
+
+      btn.appendChild(overlay);
+    });
+  }
+
+  // Initialize hotkeys and overlays
+  initHotkeys();
+
+  // Add overlays to monster cards on wave pages
+  if (window.location.pathname.includes('/active_wave.php')) {
+    // Add overlays after a short delay to ensure cards are loaded
+    setTimeout(addMonsterCardHotkeyOverlays, 1000);
+
+    // Re-add overlays when new content is loaded (for auto-refresh)
+    const observer = new MutationObserver(() => {
+      setTimeout(addMonsterCardHotkeyOverlays, 500);
+    });
+    observer.observe(document.body, { childList: true, subtree: true });
+  }
+
+  // Add overlays to battle modal attack buttons when modal opens
+  const originalShowBattleModal = showBattleModal;
+  showBattleModal = function(monster) {
+    originalShowBattleModal(monster);
+    // Add hotkey overlays after modal is shown
+    setTimeout(addBattleAttackHotkeyOverlays, 100);
+  };
+
+  // ===== END HOTKEYS SYSTEM =====
